@@ -33,55 +33,55 @@
         {
             "name": "FBneo",
             "name_esde": "fbneo",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "FbNeo",
             "scrapper_system_id":75
         },
         {
             "name": "Handheld Electronic Game",
             "name_esde": "gameandwatch",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Game & Watch",
             "scrapper_system_id":52
         },
         {
             "name": "MAME 2003-Plus",
             "name_esde": "mame",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Mame",
             "scrapper_system_id":75
         },
         {
             "name": "Microsoft - MSX",
             "name_esde": "msx",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "MSX",
             "scrapper_system_id":113
         },
         {
             "name": "NEC - PC Engine - TurboGrafx_16",
             "name_esde": "pcengine",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "PC Engine",
             "scrapper_system_id":31
         },
         {
             "name": "NEC - PC Engine CD - TurboGrafx-CD",
             "name_esde": "pcenginecd",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "PC Engine CD-Rom",
             "scrapper_system_id":114
         },
         {
             "name": "NEC - PC-98",
             "name_esde": "pc98",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "NEC PC-9801",
             "scrapper_system_id":208
         },
         {
             "name": "NEC - PC-FX",
             "name_esde": "pcfx",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "PC-FX",
             "scrapper_system_id":72
         },
         {
             "name": "Nintendo - Game Boy Advance",
             "name_esde": "gba",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Game Boy Advance",
             "scrapper_system_id":12
         },
         {
@@ -93,13 +93,13 @@
         {
             "name": "Nintendo - Nintendo 64",
             "name_esde": "n64",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Nintendo 64",
             "scrapper_system_id":14
         },
         {
             "name": "Nintendo - Nintendo DS",
             "name_esde": "nds",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Nintendo DS",
             "scrapper_system_id":15
         },
         {
@@ -111,85 +111,85 @@
         {
             "name": "Nintendo - Super Nintendo Entertainment System",
             "name_esde": "sfc",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Super Famicom",
             "scrapper_system_id":4
         },
         {
             "name": "Nintendo - Wii",
             "name_esde": "wii",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Wii",
             "scrapper_system_id":16
         },
         {
             "name": "Sega - 32X",
             "name_esde": "sega32x",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Sega 32X",
             "scrapper_system_id":19
         },
         {
             "name": "Sega - Dreamcast",
             "name_esde": "dreamcast",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Dreamcast",
             "scrapper_system_id":23
         },
         {
             "name": "Sega - Game Gear",
             "name_esde": "gamegear",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Game Gear",
             "scrapper_system_id":21
         },
         {
             "name": "Sega - Master System - Mark III",
             "name_esde": "mastersystem",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Master System",
             "scrapper_system_id":2
         },
         {
             "name": "Sega - Mega Drive - Genesis",
             "name_esde": "megadrive",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Genesis",
             "scrapper_system_id":1
         },
         {
             "name": "Sega - Mega-CD - Sega CD",
             "name_esde": "megacd",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Sega CD",
             "scrapper_system_id":20
         },
         {
             "name": "Sega - Naomi",
             "name_esde": "naomi",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Naomi",
             "scrapper_system_id":56
         },
         {
             "name": "Sega - Saturn",
             "name_esde": "saturn",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Saturn",
             "scrapper_system_id":22
         },
         {
             "name": "Sony - PlayStation",
             "name_esde": "psx",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Playstation",
             "scrapper_system_id":57
         },
         {
             "name": "Sony - PlayStation 2",
             "name_esde": "ps2",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Playstation 2",
             "scrapper_system_id":58
         },
         {
             "name": "Sony - PlayStation Portable",
             "name_esde": "psp",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "PSP",
             "scrapper_system_id":61
         },
         {
             "name": "The 3DO Company - 3DO",
             "name_esde": "3do",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "3DO",
             "scrapper_system_id":29
         }
 
