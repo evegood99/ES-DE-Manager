@@ -1,4 +1,12 @@
 {
+    "data_path":[
+        {
+            "roms_full": "",
+            "roms_fav":"",
+            "roms_media": "",
+            "roms_meta":""
+        }
+    ],
     "system_info":[
         {
             "name": "Atari - Jaguar",
