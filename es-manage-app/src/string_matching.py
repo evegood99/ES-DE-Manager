@@ -1,5 +1,5 @@
 from thefuzz import process
 
-choices = ["Atlanta Falcons", "New York Jets", "New York Giants", "Dallas Cowboys"]
-r = process.extractOne("cowboys", choices)
+choices = ["BrainDead 13 (USA) (Disc 1)", "3D Atlas (Europe)", "BrainDead 13 (USA) (Disc 2)", "Blood Angels (Japan)"]
+r = process.extractOne("braindead", choices)
 print(r)
