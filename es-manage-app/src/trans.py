@@ -1,6 +1,6 @@
 from googletrans import Translator
 
-text = "Crash â€˜n Burn is a racing game with vehicle-mounted guns and rockets. There is both a Rally mode and a Tournament mode to compete in. In the Rally Mode you race your way through up to 30 tracks with the goal of staying alive and destroying the other contenders while you try and finish in the top three. If you succeed then you advance to the next track."
+text = "The Director's Cut is an improved version of the Genesis and SNES game Ballz 3D: Fighting at its Ballziest. Like the original, it's a 3D fighting game where all the characters are made out of balls. Each character has its own moves animations and combos. In the single player mode you first have to fight against all the playable characters after which there are a variety of final bosses such as a tyrannosaurus, kangaroo, scorpion, ostrich and bull. Each boss has a unique fighting style and weak spot. In multiplayer you can fight against friends."
 translator = Translator()
 translation = translator.translate(text, dest='ko')
 translated_text = translation.text
