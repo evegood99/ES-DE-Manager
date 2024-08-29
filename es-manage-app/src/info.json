@@ -199,7 +199,26 @@
             "name_esde": "3do",
             "name_scrapper": "3DO",
             "scrapper_system_id":29
+        },
+        {
+            "name": "Nintendo - 3DS",
+            "name_esde": "3ds",
+            "name_scrapper": "3DS",
+            "scrapper_system_id":17
+        },
+        {
+            "name": "Sharp - X68000",
+            "name_esde": "x68000",
+            "name_scrapper": "x68000",
+            "scrapper_system_id":79
+        },
+        {
+            "name": "Bandai - WonderSwan",
+            "name_esde": "wonderswan",
+            "name_scrapper": "WonderSwan",
+            "scrapper_system_id":45
         }
+
 
     ]
 
