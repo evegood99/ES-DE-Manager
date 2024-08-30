@@ -128,6 +128,7 @@ class DBServer:
 
     def __init__(self) -> None:
         json_fp = open(SYSTEM_INFO_FILE_PATH)
+        self.con = sqlite3.connect(DB_FILE_PATH)
         self.system_info = json.load(json_fp)['system_info']
         self.tentacle_system = set([x[:-4] for x in os.listdir(TENTACLE_ROM_META_PATH)])
 
@@ -176,21 +177,42 @@ class DBServer:
         players = result_data['response']['jeu']['joueurs']['text']
 
 
+    def checkKorTitleNull(self, tb_name):
+        cur = self.con.cursor()
+        cur.execute(f"SELECT name_eng, name_kor, desc_eng FROM {tb_name}")
+        data_dict = {}
+        for line in cur:
+            name_kor = line[1]
+            desc_hash = hash(line[2])
+            if name_kor != None:
+                data_dict.setdefault(desc_hash, []).append((len(name_kor), name_kor))
 
-    def makeTable(self):
-        con = sqlite3.connect(DB_FILE_PATH)
-        cur = con.cursor()
+        cur.execute(f"SELECT name_eng, name_kor, desc_eng FROM {tb_name}")
+        for line in cur:
+            name_kor = line[1]
+            desc_hash = hash(line[2])
+            if name_kor == None and desc_hash in data_dict:
+                data = data_dict[desc_hash]
+                data.sort()
+                print(data[0])
+
+    def makeTable(self, i_tb_name = None):
+        cur = self.con.cursor()
         for sys_obj in self.system_info:
             sys_name = sys_obj['name_esde']
-            print(sys_name)
             if sys_name == '3do':
                 tb_name = '_3do'
             elif sys_name == '3ds':
                 tb_name = '_3ds'
             else:
                 tb_name = sys_name
-            if sys_name != 'mame':
+
+            if i_tb_name != None:
+                if sys_name != i_tb_name:
+                    continue
+            if sys_name == 'mame':
                 continue
+            print(sys_name)
             try:
                 cur.execute(f'DROP TABLE {tb_name}')
             except:
@@ -231,7 +253,8 @@ class DBServer:
                 tmp_data.append(None)
                 data_list.append(tmp_data)
             cur.executemany(f'INSERT INTO {tb_name} VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?);', data_list)
-            con.commit()
+            self.con.commit()
+        cur.close()
 
             
 
@@ -256,7 +279,8 @@ def test():
     test_xml_file_path = r'E:\Emul\Full_Roms_assets\3do\textual\Battle Blues (Korea).xml'
     server = DBServer()
     # server.readXmlFile(test_xml_file_path)
-    server.makeTable()
+    server.makeTable('sfc')
+    # server.checkKorTitleNull('sfc')
 
 def test2():
     fuzz = Fuzz('msx')
