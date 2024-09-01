@@ -2,7 +2,6 @@ import sqlite3
 import json
 import pprint
 import requests
-from fake_useragent import UserAgent
 import xml.etree.ElementTree as ET
 import os
 from thefuzz import process
@@ -97,7 +96,7 @@ class Fuzz:
         r = process.extractOne(rom_name, self.choice_list)
         select_title = r[0]
         score = r[1]
-        if score < 88:
+        if score < 89:
             if ' - ' in rom_name:
                 index1 = rom_name.index(' - ')+3
                 try:
@@ -108,7 +107,7 @@ class Fuzz:
                 r = process.extractOne(rom_name, self.choice_list)
                 select_title = r[0]
                 score = r[1]
-                if score < 88:
+                if score < 89:
                     # print(rom_name, select_title, score)
                     return {'title':None, 'desc':None}
             else:
@@ -179,22 +178,36 @@ class DBServer:
 
     def checkKorTitleNull(self, tb_name):
         cur = self.con.cursor()
-        cur.execute(f"SELECT name_eng, name_kor, desc_eng FROM {tb_name}")
+        cur.execute(f"SELECT name_eng, name_kor, desc_eng, desc_kor FROM {tb_name}")
         data_dict = {}
         for line in cur:
             name_kor = line[1]
+            if line[2] == None:
+                continue
             desc_hash = hash(line[2])
+            desc_kor = line[3]
             if name_kor != None:
-                data_dict.setdefault(desc_hash, []).append((len(name_kor), name_kor))
+                data_dict.setdefault(desc_hash, []).append((len(name_kor), name_kor, desc_kor))
 
-        cur.execute(f"SELECT name_eng, name_kor, desc_eng FROM {tb_name}")
+        cur.execute(f"SELECT name_eng, name_kor, desc_eng, rom_name FROM {tb_name}")
+        update_list = []
         for line in cur:
             name_kor = line[1]
             desc_hash = hash(line[2])
+            rom_name = line[3]
+
             if name_kor == None and desc_hash in data_dict:
                 data = data_dict[desc_hash]
                 data.sort()
-                print(data[0])
+                title_kor_name = data[0][1]
+                desc_kor = data[0][2]
+                if '(' in title_kor_name:
+                    title_kor_name = title_kor_name[:title_kor_name.index('(')]
+                    title_kor_name = title_kor_name.strip()
+                update_list.append((title_kor_name, desc_kor, rom_name))
+                print(rom_name, title_kor_name)
+        cur.executemany(f"UPDATE {tb_name} SET name_kor=?, desc_kor=? WHERE rom_name=?", update_list)
+        self.con.commit()
 
     def makeTable(self, i_tb_name = None):
         cur = self.con.cursor()
@@ -254,6 +267,8 @@ class DBServer:
                 data_list.append(tmp_data)
             cur.executemany(f'INSERT INTO {tb_name} VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?);', data_list)
             self.con.commit()
+            if sys_name in self.tentacle_system:
+                self.checkKorTitleNull(tb_name)
         cur.close()
 
             
@@ -279,7 +294,7 @@ def test():
     test_xml_file_path = r'E:\Emul\Full_Roms_assets\3do\textual\Battle Blues (Korea).xml'
     server = DBServer()
     # server.readXmlFile(test_xml_file_path)
-    server.makeTable('sfc')
+    server.makeTable()
     # server.checkKorTitleNull('sfc')
 
 def test2():

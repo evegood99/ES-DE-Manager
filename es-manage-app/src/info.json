@@ -39,7 +39,7 @@
             "scrapper_system_id":135
         },
         {
-            "name": "FBneo",
+            "name": "FBNeo - Arcade Games",
             "name_esde": "fbneo",
             "name_scrapper": "FbNeo",
             "scrapper_system_id":75
@@ -63,7 +63,7 @@
             "scrapper_system_id":113
         },
         {
-            "name": "NEC - PC Engine - TurboGrafx_16",
+            "name": "NEC - PC Engine - TurboGrafx 16",
             "name_esde": "pcengine",
             "name_scrapper": "PC Engine",
             "scrapper_system_id":31
