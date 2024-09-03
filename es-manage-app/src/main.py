@@ -315,8 +315,8 @@ class MatchingRoms:
 
 
 def test():
-    rom_path = r'G:\ROMs\ps2'
-    system_name = 'ps2'
+    rom_path = r'G:\ROMs\megadrive'
+    system_name = 'megadrive'
     mr = MatchingRoms(rom_path, system_name)
     # for line in mr.choice_list:
     #     print(line)
