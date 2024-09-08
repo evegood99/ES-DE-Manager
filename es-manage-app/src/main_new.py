@@ -5,8 +5,146 @@ import os
 from googletrans import Translator
 import re
 import zlib, hashlib
+from fastcrc import crc8, crc16, crc32, crc64
+import itertools
+import operator
 
 DB_FILE_PATH = "./es-manage-app/src/games_meta.db"
+
+def contains_digit(s):
+    return bool(re.search(r'\s\d', s)) and not bool(re.search(r'[1]', s))
+
+def remove_one(s):
+    if ' 1' == s[-2:]:
+        s = s.replace(' 1','')
+
+    elif ' 1 ' in s:
+        s = s.replace(' 1 ',' ')
+    return s
+
+def trans_num(path):
+    if ' 5' in path:
+        path = path.replace(' 5', ' V')
+
+    elif ' 8' in path:
+        path = path.replace(' 8', ' VIII')
+
+    elif ' 7' in path:
+        path = path.replace(' 7',' VII')
+
+    elif ' 6' in path:
+        path = path.replace(' 6', ' VI')
+
+    elif ' 4' in path:
+        path = path.replace(' 4', ' IV')
+
+    elif ' 3' in path:
+        path = path.replace(' 3', ' III')
+
+    elif ' 2' in path:
+        path = path.replace(' 2', ' II')
+
+    elif ' 5' in path:
+        path = path.replace(' 5', ' V')
+
+    elif ' VIII' in path:
+        path = path.replace(' VIII', ' 8')
+
+    elif ' VII' in path:
+        path = path.replace(' VII', ' 7')
+
+    elif ' VI' in path:
+        path = path.replace(' VI', ' 6')
+
+    elif ' IV' in path:
+        path = path.replace(' IV', ' 4')
+
+    elif 'III' in path:
+        path = path.replace(' III', '3')
+
+    elif 'II' in path:
+        path = path.replace(' II', '2')
+
+    return path
+
+
+def makeSeqList(base_str, list1, list2):
+    results = [base_str]
+    list1.sort()
+    list2.sort()
+    # 각 리스트의 조합 생성
+    for r in range(1, len(list1) + 1):
+        for combo1 in itertools.combinations(list1, r):
+            results.append((base_str,)+combo1)
+
+    for r in range(1, len(list2) + 1):
+        for combo2 in itertools.combinations(list2, r):
+            results.append((base_str,)+combo2)
+
+    # 두 리스트의 모든 조합을 결합하여 추가
+    for r1 in range(1, len(list1) + 1):
+        for combo1 in itertools.combinations(list1, r1):
+            for r2 in range(1, len(list2) + 1):
+                for combo2 in itertools.combinations(list2, r2):
+                    results.append((base_str,)+combo1 + combo2)
+    
+    return results
+
+# def makeSeqList(input_list):
+#     results = []
+#     for r in range(1, len(input_list) + 1):
+#         for combo in itertools.combinations(input_list, r):
+#             results.append(combo)
+#     return results
+
+def subString(text):
+    text = text.replace(':','-')
+    # pattern = re.compile(r'-\s*([^-\r\n]+?)(?:\s*\([^)]*\))?\s*(?=-|$)', re.IGNORECASE)
+    # pattern = re.compile(r'\s-\s*([^-\r\n]+?)(?:\s*\([^)]*\))?\s*(?=\s-|\s*\([^)]*\)|$)', re.IGNORECASE)
+    pattern = re.compile(r'\s-\s*([^\r\n]+?)(?:\s*\([^)]*\))?\s*(?=\s-|\s*\([^)]*\)|$)', re.IGNORECASE)
+
+    matches = pattern.findall(text)
+    results = [f"- {match.strip()}" for match in matches]
+    new_text = text
+    for r in results:
+        new_text = new_text.replace(r, '')
+    new_text = new_text.strip()
+    return new_text, [r[2:] for r in results]
+
+
+def _normString(text):
+    text = remove_extension(text)
+    sub_string = subString(text)
+    src_string = sub_string[0]
+    sub_list = sub_string[1]
+    pattern1 = '(\([^)]+\)|(\[+[^)]+\]))'
+    result = re.findall(pattern1, src_string)
+    find_r_list = []
+    for find_r in result:
+        find_r_list.append(find_r[0].replace('(','').replace(')','').replace('[','').replace(']',''))
+        src_string = src_string.replace(find_r[0],'')
+    n_text = space_number(src_string.strip())
+    return n_text, sub_list, find_r_list
+
+def normString(text):
+    text = remove_extension(text)
+    pattern1 = '(\([^)]+\)|(\[+[^)]+\]))'
+    result = re.findall(pattern1, text)
+    find_r_list = []
+    for find_r in result:
+        find_r_list.append(find_r[0].replace('(','').replace(')','').replace('[','').replace(']',''))
+        text = text.replace(find_r[0],'')
+    n_text = space_number(text.strip())
+    sub_string = subString(n_text)
+    src_string = sub_string[0]
+    sub_list = sub_string[1]
+
+    return src_string, sub_list, find_r_list
+
+def remove_extension(filename):
+    # os.path.splitext()를 사용하여 파일명과 확장자를 분리
+    basename, _ = os.path.splitext(filename)
+    return basename
 
 def removeBucket(t_str):
     pattern = '(\([^)]+\)|(\[+[^)]+\]))'
@@ -23,10 +161,20 @@ def space_number(src):
         src = src.replace(d, d[0]+' '+d[1])
     return src
 
-def mix_ratio(src, choices, limit=1):
+def mix_ratio(src, tgt):
+
     src = space_number(src)
+    r1 = fuzz.token_sort_ratio(src, tgt)
+    # r2 = fuzz.ratio(src, tgt)
+
+    return r1
+
+def __mix_ratio(src, choices, limit=1):
+    src = space_number(src)
+
     r1 = process.extract(src, choices, scorer=fuzz.token_sort_ratio, limit=1000)
-    r2 = process.extract(src, choices, scorer=fuzz.WRatio, limit=1000)
+    r2 = process.extract(src, choices, scorer=fuzz.ratio, limit=1000)
+
     sc_dict = {}
     for (k, v) in set(r1):
         sc_dict[k] = v/2
@@ -45,6 +193,7 @@ def mix_ratio(src, choices, limit=1):
     else:
         return data[:limit]
 
+
 def check_kor(text):
     p = re.compile('[ㄱ-힣]')
     r = p.search(text)
@@ -54,10 +203,25 @@ def check_kor(text):
         return True
 
 def get_hash(file_path):
+
     f = open(file_path, 'rb')
     data = f.read()
     f.close()    
-    return {'crc':hex(zlib.crc32(data))[2:], 'md5':hashlib.md5(data).hexdigest(), 'sha1':hashlib.sha1(data).hexdigest()}
+    return {'crc':hex(zlib.crc32(data))[2:], 'md5':hashlib.md5(data).hexdigest()}
+
+def get_crc(file_path):
+    # buffersize = 1024*1024*1024
+    buffersize = 65536
+    with open(file_path, 'rb') as afile:
+        buffr = afile.read(buffersize)
+        crcvalue = 0
+        while len(buffr) > 0:
+            # print(crcvalue)
+            crcvalue = zlib.crc32(buffr, crcvalue)
+            b_buffr = buffr
+            buffr = afile.read(buffersize)    
+    
+    return hex(crcvalue)[2:]
 
 
 class MatchingRoms:
@@ -67,240 +231,439 @@ class MatchingRoms:
         self.con = sqlite3.connect(DB_FILE_PATH)
         self.roms_path = roms_path
         self.system_name = system_name
-        self.rom_file_name = {}
-        self.rom_file_name_kor = {}
-        self.rm_bucket_name = {}
-        self.norm_game_name = {}
-        self.md5_data = {}
-        self.read_db()
 
-    def trans_skip(self, rom_name):
-        if '(' in rom_name and rom_name.index('(') > 5:
-            rom_name = rom_name[:rom_name.index('(')]
-            rom_name = rom_name.strip()
-            return rom_name
-        elif '[' in rom_name and rom_name.index('[') > 5:
-            rom_name = rom_name[:rom_name.index('[')]
-            rom_name = rom_name.strip()
-            return rom_name
-        else:
-            return rom_name
-
-    def trans_nums(self, rom_name):
-
-        if ' VIII' in rom_name:
-            rom_name = rom_name.replace(' VIII', ' 8')
-
-        elif ' VII' in rom_name:
-            rom_name = rom_name.replace(' VII', ' 7')
-
-        elif ' IX' in rom_name:
-            rom_name = rom_name.replace(' IX', ' 9')
-
-        elif ' VI' in rom_name:
-            rom_name = rom_name.replace(' VI', ' 6')
-
-        elif ' IV' in rom_name:
-            rom_name = rom_name.replace(' IV', ' 4')
-
-        elif ' V' in rom_name:
-            rom_name = rom_name.replace(' V', ' 5')
-
-        elif 'III' in rom_name:
-            rom_name = rom_name.replace(' III', '3')
-
-        elif 'II' in rom_name:
-            rom_name = rom_name.replace(' II', '2')
-        return rom_name
 
     def get_roms_info(self, rom_id):
         cur = self.con.cursor()
         tb_name = 'roms_'+self.system_name
         
         r = cur.execute(f"SELECT * from {tb_name} WHERE id = '{str(rom_id)}'")
-        return r.fetchone()
+        r = r.fetchone()
+        return r[2]
 
-    def read_db(self):
-        cur = self.con.cursor()
-        tb_name = 'roms_'+self.system_name
-        
-        r = cur.execute(f"SELECT * from {tb_name}")
-        for line in r:
-            es_src_name_list_str = line[1]
-            rom_file_name = line[2][:-4]
-            game_name = line[9]
-            if line[6] != None:
-                file_md5 = line[6].lower()
-            else:
-                file_md5 = None
-            rom_id = line[0]
-            game_id = line[8]
-
-            if es_src_name_list_str != None:
-                for es_src_name in es_src_name_list_str.split(';;'):
-                    self.rom_file_name[es_src_name] = rom_id
-                    self.rm_bucket_name[removeBucket(es_src_name)] = rom_id
-            
-            if rom_file_name != None:
-                self.rom_file_name[rom_file_name] = rom_id
-                self.rm_bucket_name[removeBucket(rom_file_name)] = rom_id
-
-            if game_name != None:
-                self.norm_game_name[game_name] = game_id
-
-            if file_md5 != None:
-                self.md5_data[file_md5] = rom_id
-
-    def match_process(self, file_name, test=False):
-        if not test:
-            file_full_path = self.roms_path+'\\'+file_name
-            if os.path.isfile(file_full_path):
+    def check_file_hash(self, file_name, is_force_check=False):
+        selected_game_roms_info = {}
+        if self.roms_path == None:
+            return selected_game_roms_info
+        file_full_path = self.roms_path+'\\'+file_name
+        if os.path.isfile(file_full_path):
+            if os.path.getsize(file_full_path) <= 1024 * 1024 * 30:
                 r_hash = get_hash(file_full_path)
-                md5_val = r_hash['md5'].lower()
-                if md5_val in self.md5_data:
-                    rom_id = self.md5_data[md5_val]
-                    target_data = self.get_roms_info(rom_id)[2]
-                    print(file_name, '||', target_data, 'md5')
-                    return rom_id
-                file_name = file_name[:-4]
+                crc_val = r_hash['crc']
+                md5_val = r_hash['md5']
 
-        is_name_kor = False
-        if check_kor(file_name):
-            is_name_kor = True
-            translation = self.translator.translate(file_name, dest='en')
-            translated_text = translation.text
-            translated_file_name = translated_text
-            target_db_data = self.rom_file_name_kor
-        else:
-            target_db_data = self.rom_file_name
-        target_data = mix_ratio(file_name, target_db_data.keys())
-        target_name = target_data[0]
-        target_prob = target_data[1]
+                cur = self.con.cursor()
+                tb_name = 'roms_'+self.system_name
+                r = cur.execute(f"SELECT * from {tb_name} WHERE rom_md5 = '{str(md5_val)}' or rom_crc = '{str(crc_val)}'")
+                r = r.fetchone()
+                if r != None:
+                    selected_game_roms_info[r[8]] = [r]
+                return selected_game_roms_info
 
-        if target_prob >= 80:
-            print(file_name, '||', target_data, 'rom')
-            rom_id = target_db_data[target_name] 
-            # print(file_name, '||', self.get_roms_info(rom_id)[2])
+            elif is_force_check:
+                crc_val = get_crc(file_full_path)
+                cur = self.con.cursor()
+                tb_name = 'roms_'+self.system_name
+                r = cur.execute(f"SELECT * from {tb_name} WHERE  rom_crc = '{str(crc_val)}'")
+                r = r.fetchone()
+                if r != None:
+                    selected_game_roms_info[r[8]] = [r]
+                return selected_game_roms_info
 
-        elif is_name_kor:
-            target_data = mix_ratio(translated_file_name, self.norm_game_name.keys())
-            target_name = target_data[0]
-            target_prob = target_data[1]
-            if target_prob >= 80:
-                print(file_name, '||', target_data, 'game')
-
-        else:
-            file_name = removeBucket(file_name)
-            target_data = mix_ratio(file_name, self.norm_game_name.keys())
-            target_name = target_data[0]
-            target_prob = target_data[1]
-            if target_prob >= 80:
-                print(file_name, '||', target_data, 'game')
             else:
-                target_data = mix_ratio(file_name, self.rm_bucket_name.keys())
-                target_name = target_data[0]
-                target_prob = target_data[1]
-                if target_prob >= 80:            
-                    print(file_name, '||', target_data, 'rm_name_rom')
-                else:
-                    print(file_name, '|| None', target_data)
+                return selected_game_roms_info
 
-
-        #     r = process.extractOne(o_file_name, self.choice_list_kor, scorer=fuzz.partial_ratio)
-        #     if r == None:
-        #         translation = self.translator.translate(o_file_name, dest='en')
-        #         translated_text = translation.text
-        #         file_name = translated_text
-        #     else:
-        #         db_rom_name = r[0]
-        #         score = r[1]
-        #         if score > 79:
-        #             print(o_file_name, '||| ',self.data_dict[db_rom_name][1], score, 'han')
-        #             return
+        # is_name_kor = False
+        # if check_kor(file_name):
+        #     is_name_kor = True
+        #     translation = self.translator.translate(file_name, dest='en')
+        #     translated_text = translation.text
+        #     translated_file_name = translated_text
+        #     target_db_data = self.rom_file_name_kor
         # else:
-        #     file_name = o_file_name
+        #     target_db_data = self.rom_file_name
 
-        # pattern = '([가-힣a-zA-Z][0-9])'
-        # result = re.findall(pattern, file_name)
-        # for d in result:
-        #     file_name = file_name.replace(d, d[0]+' '+d[1])
+    def read_local_files(self, local_path=None, is_exclude_xml = True):
 
-        # r = process.extractOne(file_name, self.choice_list)
-        # db_rom_name = r[0]
-        # score = r[1]
-        # # r = process.extract(file_name, self.choice_list, limit=20, scorer=fuzz.partial_ratio)
-        # # print(r)
-        # # for rom_name in self.choice_list:
-        # #     if file_name in rom_name:
-        # #         print(o_file_name, '||| ',self.data_dict[rom_name][1], score, 'inner matching')
-        # #         return
-                        
-
-        # if score >= 93:
-        #     print(o_file_name, '||| ',self.data_dict[db_rom_name][1], score, '1st')
-        # else:
-        #     tr_num_file_name = self.trans_nums(file_name)
-        #     r = process.extractOne(tr_num_file_name, self.choice_list)
-        #     db_rom_name = r[0]
-        #     score = r[1]
-        #     if score > 94:
-        #         print(o_file_name, '||| ',self.data_dict[db_rom_name][1], score, '2nd')
-        #     else:
-        #         tr_skip_name = self.trans_skip(tr_num_file_name)
-        #         r = process.extract(tr_skip_name, self.choice_list, scorer=fuzz.partial_ratio, limit=5000)
-        #         max_score_list = []
-        #         max_val = 1
-        #         for x in r:
-        #             if x[1] < max_val:
-        #                 break
-        #             else:
-        #                 max_val = x[1]
-        #                 max_score_list.append(x[0])
-        #         if len(max_score_list) == 1:
-        #             db_rom_name = max_score_list[0]
-        #             score = max_val
-        #             sec_val = 100
-        #         else:
-        #             r = process.extractOne(tr_skip_name, max_score_list, scorer=fuzz.token_sort_ratio)
-        #             # print(max_score_list)
-        #             # print(r, self.data_dict[r[0]][1])
-        #             db_rom_name = r[0]
-        #             score = max_val
-        #             sec_val = r[1]
-        #         if score > 55 and sec_val > 44:
-        #             print(o_file_name, '||| ',self.data_dict[db_rom_name][1], score,r[1], '3rd')
-        #         else:
-        #             print(o_file_name, '||| ',None)
-
-    def run_matching(self, sp_rom_name=None):
-        if sp_rom_name != None:
-            self.match_process(sp_rom_name, test=True)
-        
+        if local_path == None:
+            roms_path = self.roms_path
         else:
-            for data_name in os.listdir(self.roms_path):
-                if os.path.isfile(self.roms_path+'\\'+data_name) and not data_name[-4:] in ('.txt', '.xml', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia'):
-                    o_file_name = data_name
-                elif os.path.isdir(self.roms_path+'\\'+data_name):
-                    o_file_name = data_name
+            roms_path = local_path
+        if is_exclude_xml:
+            rm_extension = ('.txt', '.xml', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia')
+        else:
+            rm_extension = ('.txt', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia')
+
+        for data_name in os.listdir(roms_path):
+            if os.path.isfile(roms_path+'\\'+data_name) and not data_name[-4:] in rm_extension:
+                o_file_name = data_name
+            elif os.path.isdir(roms_path+'\\'+data_name):
+                o_file_name = data_name
+            else:
+                continue
+            yield o_file_name
+
+    def local_name(self, file_name):
+        yield file_name
+
+    def searchDB(self, system_name, base_title, sub_title_list): # base_title 과 sub_title이 game_name 또는 filename 또는 src_name에 모두 존재할때
+        tb_name = 'roms_'+system_name
+
+        cur = self.con.cursor()
+
+        insert_q1 = f'game_name like "{base_title}%"'
+        for sub_title in sub_title_list:
+            insert_q1 += f' and game_name like "%{sub_title}%"'
+
+        insert_q2 = f'filename like "{base_title}%"'
+        for sub_title in sub_title_list:
+            insert_q2 += f' and filename like "%{sub_title}%"'
+
+        insert_q3 = f'src_name like "{base_title}%"'
+        for sub_title in sub_title_list:
+            insert_q3 += f' and src_name like "%{sub_title}%"'
+
+
+        insert_sql = f"SELECT * FROM {tb_name} WHERE ({insert_q1}) or ({insert_q2}) or ({insert_q3})"
+        # print(insert_sql)
+        r = cur.execute(insert_sql)
+        data_list = []
+        selected_game_roms_info = {}
+        for line in r:
+            game_id = line[8]
+            selected_game_roms_info.setdefault(game_id,[]).append(line)
+
+        return selected_game_roms_info,insert_sql
+
+    def searchDB2(self, system_name, base_title, sub_title_list): # base_title 과 sub_title를 토큰(띄어쓰기 기준)으로 나눴을 때 토큰이 game_name 또는 filename 또는 src_name에 모두 존재할때
+        tb_name = 'roms_'+system_name
+
+        cur = self.con.cursor()
+
+        if '_' in base_title:
+            base_title = base_title.replace('_',' ')
+
+        base_title_token_list = base_title.split(' ')
+
+        add_bucket_str_list = []
+        last_region_check = base_title_token_list[-1].lower()
+        # if last_region_check in ['kor','korea','korean', 'kr']:
+        #     add_bucket_str_list = ['Korea']
+
+
+        last_region_check = base_title_token_list[-1].lower()
+        if last_region_check in ['kor','korea','korean', 'kr']:
+            add_bucket_str_list = ['Korea']
+            base_title_token_list.pop()
+        elif last_region_check in ['jp', 'jap', 'japan']:
+            add_bucket_str_list = ['Japan']
+            base_title_token_list.pop()
+        elif last_region_check in ['eur', 'europe']:
+            add_bucket_str_list = ['Europe']
+            base_title_token_list.pop()
+
+
+        insert_q1 = f'game_name like "%{base_title_token_list[0]}%"'
+        insert_q2 = f'filename like "%{base_title_token_list[0]}%"'
+        insert_q3 = f'src_name like "%{base_title_token_list[0]}%"'       
+
+        if len(base_title_token_list[0]) <= 3:
+            insert_q1 = f'game_name like "{base_title_token_list[0]}%"'
+            insert_q2 = f'filename like "{base_title_token_list[0]}%"'
+            insert_q3 = f'src_name like "{base_title_token_list[0]}%"'
+
+        for base_title_token in base_title_token_list[1:]:
+            insert_q1 += f' and game_name like "%{base_title_token}%"'
+        for sub_title in sub_title_list:
+            insert_q1 += f' and game_name like "%{sub_title}%"'
+
+        for base_title_token in base_title_token_list[1:]:
+            insert_q2 += f' and filename like "%{base_title_token}%"'
+        for sub_title in sub_title_list:
+            insert_q2 += f' and filename like "%{sub_title}%"'
+
+        for base_title_token in base_title_token_list[1:]:
+            insert_q3 += f' and src_name like "%{base_title_token}%"'
+        for sub_title in sub_title_list:
+            insert_q3 += f' and src_name like "%{sub_title}%"'
+
+
+        insert_sql = f"SELECT * FROM {tb_name} WHERE ({insert_q1}) or ({insert_q2}) or ({insert_q3})"
+        # print(insert_sql)
+        r = cur.execute(insert_sql)
+        selected_game_roms_info = {}
+        for line in r:
+            game_id = line[8]
+            selected_game_roms_info.setdefault(game_id,[]).append(line)
+
+        return selected_game_roms_info, add_bucket_str_list, insert_sql
+
+    def searchDB3(self, system_name, base_title): # base_title token이 game_name에 포함되어 있는 경우만
+        tb_name = 'roms_'+system_name
+
+        cur = self.con.cursor()
+
+        if '_' in base_title:
+            base_title = base_title.replace('_',' ')
+
+        insert_q1 = f'game_name like "%{base_title}%"'
+
+        if len(base_title) <= 3:
+            insert_q1 = f'game_name like "{base_title[0]}%"'
+
+
+        insert_sql = f"SELECT * FROM {tb_name} WHERE ({insert_q1})"
+        # print(insert_sql)
+        r = cur.execute(insert_sql)
+        selected_game_roms_info = {}
+        for line in r:
+            game_id = line[8]
+            selected_game_roms_info.setdefault(game_id,[]).append(line)
+
+        return selected_game_roms_info, insert_sql
+
+    def checkRegion(self, base_title, bucket_str_list, selected_game_roms_info):
+        if (bucket_str_list) == 0:
+            return selected_game_roms_info
+        bucket_str_list = set([i.lower() for i in bucket_str_list])
+
+
+        new_selected_game_roms_info = {}
+        for game_id in selected_game_roms_info:
+            for game_info in selected_game_roms_info[game_id]:
+                rom_name = game_info[2]
+                src_name = game_info[1]
+                if rom_name != None:
+                    rom_name = rom_name.lower()
                 else:
                     continue
-                
-                self.match_process(o_file_name)
+                for bucket_str in bucket_str_list:
+                    if bucket_str in rom_name:
+                        new_selected_game_roms_info.setdefault(game_id, set([])).add(game_info)
+                        break
+        
+        for k in new_selected_game_roms_info:
+            new_selected_game_roms_info[k] = list(new_selected_game_roms_info[k])
+        
+        if len(new_selected_game_roms_info) == 0:
+            return selected_game_roms_info
+        
+        return new_selected_game_roms_info
+
+    def getGameRoms(self, selected_game_info):
+        selected_games = set([])
+        selected_roms = set([])
+        for game_id in selected_game_info:
+            rom_data_list = selected_game_info[game_id]
+            for rom_data in rom_data_list:
+                rom_name = rom_data[2]
+                game_name = rom_data[9]
+                selected_games.add(game_name)
+                selected_roms.add(rom_name)
+        return selected_games, selected_roms
+
+    def run(self, test=None, other_path=False, is_print_all=True): # test는 그냥 경로가 아닌 이름만 써서 테스트 할 경우, other_path는 xml파일 제외 여부정도,
+        no_search = False
+        if test != None:
+            iterator = self.local_name(test)
+        else:
+            if other_path:
+                iterator = self.read_local_files(is_exclude_xml=False)
+            else:
+                iterator = self.read_local_files()
+
+
+        for o_file_name in iterator:
+            selected_game_roms_info = self.check_file_hash(o_file_name)
+            if len(selected_game_roms_info) != 0:
+                game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                if is_print_all:
+                    print(o_file_name,'||', rom_name_list, 'hash')
+                continue
+
+            base_title, sub_title_list, bucket_str_list = normString(o_file_name)
+            selected_game_roms_info, insert_sql = self.searchDB(self.system_name, base_title, sub_title_list)
+            # print(insert_sql)            
+
+            if len(selected_game_roms_info) == 0: # 쿼리 후보 대상이 하나도 없다면.. 
+                ori_base_title = base_title
+                base_title = trans_num(remove_one(base_title)) # base_title의 문자를 약간 조작 (숫자 변경 등)
+                selected_game_roms_info, insert_sql = self.searchDB(self.system_name, base_title, sub_title_list)
+
+                if len(selected_game_roms_info) == 0: # 이 file은 쿼리 로 후보 자체를 찾을 수 없음.. (계속)
+                    base_title = ori_base_title
+                    selected_game_roms_info, add_bucket_str_list, insert_sql = self.searchDB2(self.system_name, base_title, sub_title_list)
+                    bucket_str_list = list(set(bucket_str_list + add_bucket_str_list))
+
+                    if len(selected_game_roms_info) == 0: #이 file은 쿼리 로 후보 자체를 찾을 수 없음.. (계속)
+                        # print(insert_sql)
+                        base_title = trans_num(remove_one(base_title))
+                        selected_game_roms_info, add_bucket_str_list, insert_sql = self.searchDB2(self.system_name, base_title, sub_title_list)
+
+                        if len(selected_game_roms_info) == 0: #이 file은 쿼리 로 후보 자체를 찾을 수 없음.. (계속)
+                            base_title = ori_base_title
+                            selected_game_roms_info, insert_sql = self.searchDB3(self.system_name, base_title)
+                            # print(insert_sql)
+
+                            if len(selected_game_roms_info) == 0: #이 file은 쿼리 로 후보 자체를 찾을 수 없음.. (계속)
+                                selected_game_roms_info = self.check_file_hash(o_file_name, is_force_check=True)
+                                if len(selected_game_roms_info) != 0:
+                                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                                    if is_print_all:
+                                        print(o_file_name,'||', rom_name_list, 'hash')
+                                    continue
+                                else:
+                                    # print(o_file_name, 'NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOON')
+                                    no_search = True
+                                    # return base_title                          
+                                    continue
+
+
+            if len(selected_game_roms_info) == 1: # 쿼리 후보 대상이 1개라면 해당 game 선택 (끝)
+                selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)                
+                game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                if is_print_all:
+                    print(o_file_name,'||',rom_name_list, '1')
+
+            else: # 쿼리 후보 대상이 2개 이상이라면
+                if base_title in selected_game_roms_info: #기본 제목이 game_name 목록과 완전 동일 이라면 해당 게임 선택 (끝)
+                    selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
+                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                    if is_print_all:
+                        print(o_file_name,'||',rom_name_list, '11')
+                    continue
+
+
+                if not contains_digit(base_title):  #기본 제목에 숫자가 없는 title 이라면 (쿼리 후보에 숫자가 있는 것도 같이 뽑히겠지)
+
+                    removed_game_id_list = set([])
+                    for game_id in selected_game_roms_info:
+                        game_info_list = selected_game_roms_info[game_id]
+                        for game_info in game_info_list:
+                            game_name = game_info[9]
+                            if contains_digit(game_name): # 숫자가 있는 game_name은 제외
+                                removed_game_id_list.add(game_id)
+
+                    for game_id in removed_game_id_list: #후보 game_name 목록 중에서
+                            selected_game_roms_info.pop(game_id)
+
+                    if len(selected_game_roms_info) == 1: #위에 제외 후 1개만 남았다면 그녁석을 선택 (끝)
+                        selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
+                        game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                        if is_print_all:
+                            print(o_file_name,'||',rom_name_list, '4')
+
+                    else: # 위에 제외 후에도 2개 이상이라면 일단 2개 이상 으로 냅둠 (계속)
+                        selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
+                        game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                        if is_print_all:
+                            print(o_file_name,'||',rom_name_list, '5')
+
+                else: # 기본 제목에 숫자가 있는 타이틀 이라면.(숫자도 반드시 반영 되었겠지).. 이경우는 현재 2개 이상으로 냅둠 (계속)
+                    selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
+                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                    if is_print_all:
+                        print(o_file_name,'||',rom_name_list, '2')
+
+        return no_search, base_title
 
 
 
 def test():
-    rom_path = r'G:\ROMs\sfc'
-    system_name = 'sfc'
+    rom_path = r'G:\ROMs\ps2'
+    # rom_path = r'E:\Emul\Full_Roms_assets\ps2\textual'
+    system_name = 'ps2'
     mr = MatchingRoms(rom_path, system_name)
     # r = mr.get_roms_info(1025140)
     # print(r)
     # for line in mr.choice_list:
     #     print(line)
-    mr.run_matching()
+    mr.run(other_path=False)
     
-# def test2():
-#     get_roms_info()
+def test2():
+    file = r'G:\ROMs\ps2\Jin Samguk Mussang 5 Special (Korea).iso'
+    print(os.path.getsize(file))
+    r = get_crc(file)
+    print(r)
+
+def test3():
+    system_name = 'snes'
+    con = sqlite3.connect(DB_FILE_PATH)
+    cur = con.cursor()
+    tb_name = 'roms_'+system_name
+    
+    r = cur.execute(f"SELECT * from {tb_name} order by filename asc")
+    n = 0
+    for line in r:
+        src_name_list_str = line[1]
+        rom_file_name = line[2]
+        game_name = line[9]
+        if line[6] != None:
+            file_md5 = line[6].lower()
+        else:
+            file_md5 = None
+        rom_id = line[0]
+        game_id = line[8]
+        # print(rom_file_name, '||', normString(rom_file_name))
+        if src_name_list_str != None:
+            src_name_list = src_name_list_str.split(';;')
+
+            for src_name in src_name_list:
+                print(rom_file_name, '||', normString(rom_file_name))
+
+        n += 1
+        if n == 3000:
+            break
+
+
+def test4():
+
+    text1 = "Berserk - Millennium Falcon-hen - Seima Senki no Shou (Japan) (Branded Box - Rakuin no Hako)"
+    text2 = "3 Title Special Disc - Saru! Get You! 2 PoPoLoCrois - Hajimari no Bouken Boku no Natsuyasumi 2 (Japan) (Taikenban).bin"
+    print(normString(text1))
+    print(normString(text2))
+
+def test5():
+    base_str = 'kkk'
+    a = ['x','y']
+    b = ['a','b']
+    print(makeSeqList(base_str,a,b))
+
+def test6():
+    a = 'devil cry'
+    b = 'devil may cry'
+    r = fuzz.WRatio(a,b)
+    print(r)
+
+def test_nlp():
+    import spacy
+    roms_path = r'G:\ROMs\ps2'
+    system_name = 'ps2'
+
+    nlp = spacy.load('en_core_web_trf')
+    for data_name in os.listdir(roms_path):
+        if os.path.isfile(roms_path+'\\'+data_name) and not data_name[-4:] in ('.txt', '.xml', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia'):
+            o_file_name = data_name
+        elif os.path.isdir(roms_path+'\\'+data_name):
+            o_file_name = data_name
+        else:
+            continue
+        # print(o_file_name)
+    # text = 
+    
+        base_title, sub_title_list, bucket_str_list = normString(space_number(o_file_name))
+        r_nlp1 = nlp(base_title)
+        t_list = []
+        for token in r_nlp1:
+            t_list.append((token, token.tag_))
+        for sub_title in sub_title_list:
+            r_nlp2 = nlp(sub_title)
+            for token in r_nlp2:
+                t_list.append((token, token.tag_))
+
+        print(o_file_name, t_list, bucket_str_list)
+
+
 
 if __name__ == "__main__":
     test()

@@ -63,12 +63,12 @@ class Fuzz:
 
 
             elif 'III' in path:
-                path = path.replace('III', '3')
+                path = path.replace(' III', '3')
                 self.choice_list.append(path)
                 self.kor_dict[path] = (title, desc)
 
             elif 'II' in path:
-                path = path.replace('II', '2')
+                path = path.replace(' II', '2')
                 self.choice_list.append(path)
                 self.kor_dict[path] = (title, desc)
 
@@ -315,8 +315,8 @@ class MatchingRoms:
 
 
 def test():
-    rom_path = r'G:\ROMs\megadrive'
-    system_name = 'megadrive'
+    rom_path = r'G:\ROMs\ps2'
+    system_name = 'ps2'
     mr = MatchingRoms(rom_path, system_name)
     # for line in mr.choice_list:
     #     print(line)

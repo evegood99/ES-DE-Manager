@@ -10,6 +10,8 @@ import random
 from thefuzz import process
 from thefuzz import fuzz
 import re
+import xml.etree.ElementTree as ET
+from main_new import MatchingRoms
 
 SYSTEM_INFO_FILE_PATH = "./es-manage-app/src/info.json"
 DB_FILE_PATH = "./es-manage-app/src/games_meta.db"
@@ -18,6 +20,7 @@ ROMS_TABLE_SCHEMA = "(id text, src_name text, filename text, filename_kor text, 
 GAMES_TABLE_SCHEMA = "(id text, name text, name_kor text, desc text, desc_kor text, genre text, releasedate text, developer text, players text)"
 RETROARCH_META_PATH = r"E:\Emul\Full_Roms_meta"
 TENTACLE_ROM_META_PATH = "./es-manage-app/src/tentacle_meta"
+
 
 def remove_extension(filename):
     # os.path.splitext()를 사용하여 파일명과 확장자를 분리
@@ -91,6 +94,8 @@ class SSRomsMeta:
         self.get_num = 0
         self.api_call_num = 0
 
+        self.stop_call_api = False
+
         print(self.system_name)
         self.preLoadTable()
 
@@ -118,10 +123,14 @@ class SSRomsMeta:
         for line in r1:
             self.roms_meta[line[0]] = line
             self.rom_name_set.setdefault(remove_extension(line[2]), set([])).add(line[0])
+            if line[5] != None:
+                self.crc_to_rom_id[line[5].lower()] = line[0]
+            if line[6] != None:
+                self.md5_to_rom_id[line[6].lower()] = line[0]
             if line[1] != None:
                 for f_name in line[1].split(';;'):
                     self.pre_read_file.setdefault(f_name, set([])).add(line[0])
-
+                    
     def jsonParsing(self, result_data, s_file_name, rom_meta=None):
         jeu_id = result_data['response']['jeu']['id']
         tmp_name_dict = {}
@@ -227,8 +236,9 @@ class SSRomsMeta:
                 from_rom_crc = rom_meta[3]
                 self.roms_meta['ra_'+from_rom_crc] = ('ra_'+from_rom_crc,  rom_meta[0],  rom_meta[1], None,  rom_meta[2],  rom_meta[3],  rom_meta[4],  rom_meta[5], jeu_id, game_name, alt, beta, demo, langs, langs_short, regions, regions_short)
         else:
-            from_rom_crc = rom_meta[3]
-            self.roms_meta['ra_'+from_rom_crc] = ('ra_'+from_rom_crc,  rom_meta[0],  rom_meta[1], None,  rom_meta[2],  rom_meta[3],  rom_meta[4],  rom_meta[5], jeu_id, game_name, None, None, None, None, None, None, None)
+            if rom_meta != None:
+                from_rom_crc = rom_meta[3]
+                self.roms_meta['ra_'+from_rom_crc] = ('ra_'+from_rom_crc,  rom_meta[0],  rom_meta[1], None,  rom_meta[2],  rom_meta[3],  rom_meta[4],  rom_meta[5], jeu_id, game_name, None, None, None, None, None, None, None)
 
         return s_rom_id_list
 
@@ -249,7 +259,7 @@ class SSRomsMeta:
         else:
             from_rom_crc = 'x'
 
-        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":file_name}
+        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood2", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":file_name}
         try:
             resp = requests.get(self.base_url, params=param, timeout=30)
         except requests.exceptions.Timeout as e:
@@ -259,9 +269,9 @@ class SSRomsMeta:
         if resp.status_code == 200:
             json_data = json.loads(resp.text)
         else:
-            if 'Erreur : Jeu non trouvée !' in resp.text:
+            if 'Erreur : Jeu non trouvée !' in resp.text or 'Erreur : Rom/Iso/Dossier non trouvée !' in resp.text:
                 r_file_name = removeBucket(file_name)
-                param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":r_file_name}
+                param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood2", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":r_file_name}
                 try:
                     resp = requests.get(self.base_url, params=param, timeout=30)
                 except requests.exceptions.Timeout as e:
@@ -276,6 +286,10 @@ class SSRomsMeta:
                     return 0
             elif "Votre quota de scrape est dépassé pour aujourd'hui" in resp.text:
                 self.stop_call_api = True
+                self.run_bucket.remove(file_name)
+                print('ERROR : qurter limit, stop call process')
+                return 0
+
             else:
                 self.run_bucket.remove(file_name)
                 print('Error : ', resp.text, '::',file_name)
@@ -359,7 +373,9 @@ class SSRomsMeta:
                     for s_rom in s_rom_list:
                         self.update_src(file_name, s_rom)
                     print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(name_set), len(self.run_bucket))
-                    continue  
+                    continue
+            if self.stop_call_api:
+                continue
             self.run_bucket.add(file_name)        
             self.api_call_num += 1
             t1 = Thread(target=self.call_api, args=(file_name,))
@@ -391,11 +407,14 @@ class SSRomsMeta:
         data_list = []
         result = re.findall(pattern, total_str)
         for line1 in result:
-            line1 = line1 + ' )'
-            name = re.findall(name_pattern, line1)[0]
-            rom_str = re.findall(rom_pattern, line1)[0]
-            rom_name = re.findall(rom_name_pattern, rom_str)[0]
-            rom_size = re.findall(rom_size_pattern, rom_str)
+            try:
+                line1 = line1 + ' )'
+                name = re.findall(name_pattern, line1)[0]
+                rom_str = re.findall(rom_pattern, line1)[0]
+                rom_name = re.findall(rom_name_pattern, rom_str)[0]
+                rom_size = re.findall(rom_size_pattern, rom_str)
+            except:
+                continue
             if rom_size == []:
                 rom_size = None
             else:
@@ -420,7 +439,59 @@ class SSRomsMeta:
 
             yield (name, rom_name, rom_size, rom_crc, rom_md5, rom_sha1)
 
+    def check_data(self):
+        file_list = []
+        xml_files_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'textual'
+        r = os.listdir(xml_files_path)
+        name_set = set([])
+        for file_name in r:
+            if file_name[-4:] != '.xml':
+                continue
+            name_set.add(remove_extension(file_name))        
 
+        for file_name in os.listdir(RETROARCH_META_PATH):
+            if file_name == self.ra_system_name+".dat":
+                file_list.append(RETROARCH_META_PATH+'\\'+file_name)
+                break
+        
+        for file_name in os.listdir(RETROARCH_META_PATH+'\\'+'no-intro'):
+            if file_name == self.ra_system_name+".dat":
+                file_list.append(RETROARCH_META_PATH+'\\'+'no-intro'+'\\'+file_name)
+                break
+
+        for file_name in os.listdir(RETROARCH_META_PATH+'\\'+'redump'):
+            if file_name == self.ra_system_name+".dat":
+                file_list.append(RETROARCH_META_PATH+'\\'+'redump'+'\\'+file_name)
+                break
+
+        for file_name in os.listdir(RETROARCH_META_PATH+'\\'+'tosec'):
+            if file_name == self.ra_system_name+".dat":
+                file_list.append(RETROARCH_META_PATH+'\\'+'tosec'+'\\'+file_name)
+                break
+        
+        ra_meta_set = set([])
+        for f_path in file_list:
+            fp = open(f_path)
+            try:
+                data = fp.read()
+            except UnicodeDecodeError:
+                fp = open(f_path, encoding='utf-8')
+                data = fp.read()
+            for line in self.ra_parsing(data):
+                ra_meta_set.add(line[0])
+
+        name_set.update(ra_meta_set)
+
+        mr = MatchingRoms(None, self.system_name)
+        try_name_data = set([])
+        for f_name in name_set:
+            r, base_title = mr.run(f_name, is_print_all=False)
+            if r:
+                try_name_data.add(base_title)          
+
+        for f_name in try_name_data:
+            print(f_name)
+        print(len(try_name_data))
     def after_merge_ra_meta(self):
         file_list = []
         self.get_num = 0
@@ -447,8 +518,11 @@ class SSRomsMeta:
         ra_meta_set = set([])
         for f_path in file_list:
             fp = open(f_path)
-            data = fp.read()
-            print(f_path)
+            try:
+                data = fp.read()
+            except UnicodeDecodeError:
+                fp = open(f_path, encoding='utf-8')
+                data = fp.read()
             for line in self.ra_parsing(data):
                 ra_meta_set.add(line)
         self.tot_search_num = len(ra_meta_set)
@@ -473,6 +547,8 @@ class SSRomsMeta:
                 if ra_rom_crc in self.crc_to_rom_id:
                     s_rom_id = self.crc_to_rom_id[ra_rom_crc]
                     self.update_src(ra_src_name, s_rom_id)
+                    continue
+                elif ra_rom_crc in self.roms_meta:
                     continue
             ra_rom_md5 = ra_rom_meta[4]
             if  ra_rom_md5 != None:
@@ -502,7 +578,7 @@ class SSRomsMeta:
                 mr = mix_ratio(file_name, tuple(self.pre_read_file.keys()))
                 if mr[1] >= 94:
                     print('no call api :',file_name, mr[0])
-                    s_rom_list = self.pre_read_file[mr[0]]
+                    s_rom_list = list(self.pre_read_file[mr[0]])
                     for s_rom in s_rom_list:
                         self.update_src(file_name, s_rom)
                     from_rom_info = self.roms_meta[s_rom_list[0]]
@@ -563,22 +639,40 @@ class SSRomsMeta:
         for child in root.findall('game'):
             path = child.find('path').text
             path = path[2:-4]
-            self.choice_list.append(path)
             title = child.find('name').text
-            desc = child.find('desc')
-            if desc == None:
-                desc = None
-            else:
-                desc = desc.text
-            self.kor_dict[path] = (title, desc)
+            # print(path, title)
 
+            if path in self.pre_read_file:
+                s_rom_id_list = self.pre_read_file[path]
+                for s_rom_id in s_rom_id_list:
+                    data = self.roms_meta[s_rom_id]
+                print(path,'||',data[2],'||',title)
+                continue
+
+            if path in self.rom_name_set:
+                s_rom_id_list = self.rom_name_set[path]
+                for s_rom_id_list in s_rom_id_list:
+                    data = self.roms_meta[s_rom_id]
+                print(path,'||',data[2],'||',title)
+                continue
+            else:
+                mr = mix_ratio(path, tuple(self.rom_name_set.keys()))
+                if mr[1] >= 94:
+                    s_rom_id_list = self.rom_name_set[mr[0]]
+                    for s_rom_id_list in s_rom_id_list:
+                        data = self.roms_meta[s_rom_id]
+                    print(path,'||',data[2],'||',title)
+                    continue  
+
+            print(path, '-----------------------------------------',mr)
 
 def test():
-    system_name = 'famicom'
+    system_name = 'ps2'
     ss= SSRomsMeta(system_name)
-    ss.makeDBTable()
-    ss.after_merge_ra_meta()
+    # ss.makeDBTable()
     # ss.after_merge_ra_meta()
+    ss.check_data()
+    # ss.addTentacleMeta()
 
 def test2():
 

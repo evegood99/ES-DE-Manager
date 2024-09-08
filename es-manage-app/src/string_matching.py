@@ -4,12 +4,12 @@ import re
 
 choices = [ "Shining Force 3 - Scenario 1 - Outo no Kyoshin (Japan) (Demo)", "Shining Force 3 - Scenario 2 - Nerawareta Miko (Japan) (Rev A)", "Shining Force 3 - Scenario 3 - Hyouheki no Jashinguu (Japan)", "Blood Angels (Japan)"]
 choices = [
-"Pretty Soldier SailorMoon S (Japan)","Pretty Soldier Sailormoon Demo (J)"
+"Ace Combat 5 : The Unsung War (Japan)","Combat Ace"
 
 ]
 choices = set(choices)
 
-src= "Pretty soldier sailormoon S"
+src= "Ace Combat 5"
 # src = "Golf Magazine Presents - 36 Great Holes Starring Fred Couples (Japan)"
 r = process.extract(src, choices, limit=2)
 print(r)
