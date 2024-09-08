@@ -492,6 +492,7 @@ class SSRomsMeta:
         for f_name in try_name_data:
             print(f_name)
         print(len(try_name_data))
+        
     def after_merge_ra_meta(self):
         file_list = []
         self.get_num = 0
