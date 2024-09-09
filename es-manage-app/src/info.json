@@ -93,6 +93,18 @@
             "scrapper_system_id":12
         },
         {
+            "name": "Nintendo - Game Boy",
+            "name_esde": "gb",
+            "name_scrapper": "Game Boy",
+            "scrapper_system_id":9
+        },
+        {
+            "name": "Nintendo - Game Boy Color",
+            "name_esde": "gbc",
+            "name_scrapper": "Game Boy Color",
+            "scrapper_system_id":9
+        },
+        {
             "name": "Nintendo - GameCube",
             "name_esde": "gc",
             "name_scrapper": "Jaguar",

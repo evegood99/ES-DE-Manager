@@ -12,7 +12,7 @@ import operator
 DB_FILE_PATH = "./es-manage-app/src/games_meta.db"
 
 def contains_digit(s):
-    return bool(re.search(r'\s\d', s)) and not bool(re.search(r'[1]', s))
+    return bool(re.search(r'\s\d|\sII\s|\sIII\s|\sIV\s|\sV\s', s)) and not bool(re.search(r'[1]', s))
 
 def remove_one(s):
     if ' 1' == s[-2:]:
@@ -161,19 +161,20 @@ def space_number(src):
         src = src.replace(d, d[0]+' '+d[1])
     return src
 
-def mix_ratio(src, tgt):
+# def mix_ratio(src, tgt):
 
-    src = space_number(src)
-    r1 = fuzz.token_sort_ratio(src, tgt)
-    # r2 = fuzz.ratio(src, tgt)
+#     src = space_number(src)
+#     r1 = fuzz.token_sort_ratio(src, tgt)
+#     # r2 = fuzz.ratio(src, tgt)
 
     return r1
 
-def __mix_ratio(src, choices, limit=1):
+def mix_ratio(src, choices, limit=1):
     src = space_number(src)
 
     r1 = process.extract(src, choices, scorer=fuzz.token_sort_ratio, limit=1000)
-    r2 = process.extract(src, choices, scorer=fuzz.ratio, limit=1000)
+    r2 = process.extract(src, choices, scorer=fuzz.WRatio, limit=1000)
+    # r3 = process.extract(src, choices, scorer=fuzz.ratio, limit=1000)
 
     sc_dict = {}
     for (k, v) in set(r1):
@@ -184,6 +185,7 @@ def __mix_ratio(src, choices, limit=1):
             sc_dict[k] += v/2
         else:
             sc_dict[k] = v/2
+
     if len(sc_dict) == 0:
         return (0, 0)
     data = list(sc_dict.items())
@@ -231,8 +233,23 @@ class MatchingRoms:
         self.con = sqlite3.connect(DB_FILE_PATH)
         self.roms_path = roms_path
         self.system_name = system_name
+        self.fuzz_data = {}
+        self.fuzz_data2 = {}
+        self.read_fuzz_data()
 
 
+    def read_fuzz_data(self):
+        cur = self.con.cursor()
+        tb_name = 'games_'+self.system_name
+        
+        r = cur.execute(f"SELECT * from {tb_name}")
+        for line in r:
+            game_name = line[1]
+            self.fuzz_data2[game_name] = line[0]
+            game_name = game_name.replace(' : ',' ')
+            game_name = game_name.replace(' ','')
+            self.fuzz_data[game_name] = line[0]
+        
     def get_roms_info(self, rom_id):
         cur = self.con.cursor()
         tb_name = 'roms_'+self.system_name
@@ -272,6 +289,8 @@ class MatchingRoms:
 
             else:
                 return selected_game_roms_info
+        else:
+            return selected_game_roms_info
 
         # is_name_kor = False
         # if check_kor(file_name):
@@ -422,6 +441,48 @@ class MatchingRoms:
 
         return selected_game_roms_info, insert_sql
 
+
+    def searchDB4(self, system_name, base_title, sub_title_list): # base_title token이 game_name에 포함되어 있는 경우만
+        tb_name = 'roms_'+system_name
+
+
+        cur = self.con.cursor()
+        ori_base_title = base_title
+        if '_' in base_title:
+            base_title = base_title.replace('_',' ')
+        
+        base_title = base_title+''.join(sub_title_list)
+        base_title = base_title.replace(' ','')
+        selected_game_roms_info = {}
+
+        r1 = mix_ratio(base_title, self.fuzz_data.keys())
+        r2 = mix_ratio(ori_base_title, self.fuzz_data2.keys())
+
+        if r2[1] >= r1[1]:
+            r = r2
+            fuzz_data = self.fuzz_data2
+        else:
+            r = r1
+            fuzz_data = self.fuzz_data
+
+        cr_val = 60
+        print('!!!!!!!! :',r[1])
+        if system_name in ['dos']:
+            cr_val = 90
+        if r[1] >= cr_val:
+            game_id = fuzz_data[r[0]]
+        else:
+            return selected_game_roms_info
+
+        insert_sql = f"SELECT * FROM {tb_name} WHERE game_id = {game_id}"
+
+        r = cur.execute(insert_sql)
+        for line in r:
+            game_id = line[8]
+            selected_game_roms_info.setdefault(game_id,[]).append(line)
+
+        return selected_game_roms_info
+
     def checkRegion(self, base_title, bucket_str_list, selected_game_roms_info):
         if (bucket_str_list) == 0:
             return selected_game_roms_info
@@ -450,7 +511,7 @@ class MatchingRoms:
         
         return new_selected_game_roms_info
 
-    def getGameRoms(self, selected_game_info):
+    def getGameRoms(self, selected_game_info, is_result_roms=True):
         selected_games = set([])
         selected_roms = set([])
         for game_id in selected_game_info:
@@ -460,9 +521,31 @@ class MatchingRoms:
                 game_name = rom_data[9]
                 selected_games.add(game_name)
                 selected_roms.add(rom_name)
+        if is_result_roms == False:
+            return selected_roms, selected_games
         return selected_games, selected_roms
+    
+    def closeMatching(self, base_title, sub_title_list, selected_game_roms_info): #후보 game_name이 2개 이상일 때, input_name과 fuzz가 가장 가까운걸로
+        if '_' in base_title:
+            base_title = base_title.replace('_',' ')
+        
+        base_title = base_title+''.join(sub_title_list)
+        base_title = base_title.replace(' ','')
 
-    def run(self, test=None, other_path=False, is_print_all=True): # test는 그냥 경로가 아닌 이름만 써서 테스트 할 경우, other_path는 xml파일 제외 여부정도,
+        new_selected_game_roms_info = {}
+
+        recomm_list = {}
+        for game_id in selected_game_roms_info:
+            game_info = selected_game_roms_info[game_id][0]
+            game_name = game_info[9]
+            recomm_list[game_name] = game_id
+        
+        r = mix_ratio(base_title, recomm_list.keys())
+        selected_game_id = recomm_list[r[0]]
+        new_selected_game_roms_info[selected_game_id] = selected_game_roms_info[selected_game_id]
+        return new_selected_game_roms_info
+
+    def run(self, test=None, other_path=False, is_print_all=True, is_result_roms=False): # test는 그냥 경로가 아닌 이름만 써서 테스트 할 경우, other_path는 xml파일 제외 여부정도,
         no_search = False
         if test != None:
             iterator = self.local_name(test)
@@ -476,7 +559,7 @@ class MatchingRoms:
         for o_file_name in iterator:
             selected_game_roms_info = self.check_file_hash(o_file_name)
             if len(selected_game_roms_info) != 0:
-                game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
                 if is_print_all:
                     print(o_file_name,'||', rom_name_list, 'hash')
                 continue
@@ -484,7 +567,6 @@ class MatchingRoms:
             base_title, sub_title_list, bucket_str_list = normString(o_file_name)
             selected_game_roms_info, insert_sql = self.searchDB(self.system_name, base_title, sub_title_list)
             # print(insert_sql)            
-
             if len(selected_game_roms_info) == 0: # 쿼리 후보 대상이 하나도 없다면.. 
                 ori_base_title = base_title
                 base_title = trans_num(remove_one(base_title)) # base_title의 문자를 약간 조작 (숫자 변경 등)
@@ -508,27 +590,28 @@ class MatchingRoms:
                             if len(selected_game_roms_info) == 0: #이 file은 쿼리 로 후보 자체를 찾을 수 없음.. (계속)
                                 selected_game_roms_info = self.check_file_hash(o_file_name, is_force_check=True)
                                 if len(selected_game_roms_info) != 0:
-                                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
                                     if is_print_all:
                                         print(o_file_name,'||', rom_name_list, 'hash')
-                                    continue
                                 else:
-                                    # print(o_file_name, 'NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOON')
-                                    no_search = True
-                                    # return base_title                          
-                                    continue
-
+                                    selected_game_roms_info = self.searchDB4(self.system_name, base_title, sub_title_list)
+                                    if len(selected_game_roms_info) == 0:
+                                        print(o_file_name, 'NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOON')
+                                        no_search = True
+                                        # return base_title                          
+                                        continue
+                                        
 
             if len(selected_game_roms_info) == 1: # 쿼리 후보 대상이 1개라면 해당 game 선택 (끝)
                 selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)                
-                game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
                 if is_print_all:
                     print(o_file_name,'||',rom_name_list, '1')
 
             else: # 쿼리 후보 대상이 2개 이상이라면
                 if base_title in selected_game_roms_info: #기본 제목이 game_name 목록과 완전 동일 이라면 해당 게임 선택 (끝)
                     selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
-                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
                     if is_print_all:
                         print(o_file_name,'||',rom_name_list, '11')
                     continue
@@ -544,24 +627,27 @@ class MatchingRoms:
                             if contains_digit(game_name): # 숫자가 있는 game_name은 제외
                                 removed_game_id_list.add(game_id)
 
-                    for game_id in removed_game_id_list: #후보 game_name 목록 중에서
-                            selected_game_roms_info.pop(game_id)
+                    if len(selected_game_roms_info) > len(removed_game_id_list):
+                        for game_id in removed_game_id_list: #후보 game_name 목록 중에서
+                                selected_game_roms_info.pop(game_id)
 
                     if len(selected_game_roms_info) == 1: #위에 제외 후 1개만 남았다면 그녁석을 선택 (끝)
                         selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
-                        game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                        game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
                         if is_print_all:
                             print(o_file_name,'||',rom_name_list, '4')
 
-                    else: # 위에 제외 후에도 2개 이상이라면 일단 2개 이상 으로 냅둠 (계속)
+                    else: # 위에 제외 후에도 2개 이상이라면 일단 2개 이상 이면 후보 중 가장 src_name 과 유사한 걸로 뽑음 (끝)
+                        selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
                         selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
-                        game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                        game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
                         if is_print_all:
                             print(o_file_name,'||',rom_name_list, '5')
 
                 else: # 기본 제목에 숫자가 있는 타이틀 이라면.(숫자도 반드시 반영 되었겠지).. 이경우는 현재 2개 이상으로 냅둠 (계속)
+                    selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
                     selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
-                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info)
+                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
                     if is_print_all:
                         print(o_file_name,'||',rom_name_list, '2')
 
@@ -569,16 +655,7 @@ class MatchingRoms:
 
 
 
-def test():
-    rom_path = r'G:\ROMs\ps2'
-    # rom_path = r'E:\Emul\Full_Roms_assets\ps2\textual'
-    system_name = 'ps2'
-    mr = MatchingRoms(rom_path, system_name)
-    # r = mr.get_roms_info(1025140)
-    # print(r)
-    # for line in mr.choice_list:
-    #     print(line)
-    mr.run(other_path=False)
+
     
 def test2():
     file = r'G:\ROMs\ps2\Jin Samguk Mussang 5 Special (Korea).iso'
@@ -587,39 +664,28 @@ def test2():
     print(r)
 
 def test3():
-    system_name = 'snes'
+    system_name = 'ps2'
     con = sqlite3.connect(DB_FILE_PATH)
     cur = con.cursor()
-    tb_name = 'roms_'+system_name
+    tb_name = 'games_'+system_name
     
-    r = cur.execute(f"SELECT * from {tb_name} order by filename asc")
+    r = cur.execute(f"SELECT * from {tb_name}")
     n = 0
+    game_name_set = set([])
     for line in r:
-        src_name_list_str = line[1]
+        game_name = line[1]
+        game_name = game_name.replace(' : ',' ')
+        game_name = game_name.replace(' ','')
+        game_name_set.add(game_name)
         rom_file_name = line[2]
-        game_name = line[9]
-        if line[6] != None:
-            file_md5 = line[6].lower()
-        else:
-            file_md5 = None
-        rom_id = line[0]
-        game_id = line[8]
-        # print(rom_file_name, '||', normString(rom_file_name))
-        if src_name_list_str != None:
-            src_name_list = src_name_list_str.split(';;')
-
-            for src_name in src_name_list:
-                print(rom_file_name, '||', normString(rom_file_name))
-
-        n += 1
-        if n == 3000:
-            break
-
+    
+    r = mix_ratio('Disgaia', game_name_set)
+    print(r)
 
 def test4():
 
-    text1 = "Berserk - Millennium Falcon-hen - Seima Senki no Shou (Japan) (Branded Box - Rakuin no Hako)"
-    text2 = "3 Title Special Disc - Saru! Get You! 2 PoPoLoCrois - Hajimari no Bouken Boku no Natsuyasumi 2 (Japan) (Taikenban).bin"
+    text1 = "A-mazing Tater (Atlus)[tr es]"
+    text2 = "Tantei Jinguji Saburo - Innocent Black (Japan).iso"
     print(normString(text1))
     print(normString(text2))
 
@@ -630,10 +696,12 @@ def test5():
     print(makeSeqList(base_str,a,b))
 
 def test6():
-    a = 'devil cry'
-    b = 'devil may cry'
+    a = 'viewtiful '
+    b = 'To Heart 2'
     r = fuzz.WRatio(a,b)
-    print(r)
+    r2 = mix_ratio(a, [b])
+    r3 = fuzz.ratio(a,b)
+    print(r, r2, r3)
 
 def test_nlp():
     import spacy
@@ -663,7 +731,16 @@ def test_nlp():
 
         print(o_file_name, t_list, bucket_str_list)
 
-
+def test():
+    rom_path = r'G:\ROMs\ps2'
+    # rom_path = r'E:\Emul\Full_Roms_assets\ps2\textual'
+    system_name = 'ps2'
+    mr = MatchingRoms(rom_path, system_name)
+    # r = mr.get_roms_info(1025140)
+    # print(r)
+    # for line in mr.choice_list:
+    #     print(line)
+    mr.run(other_path=False)
 
 if __name__ == "__main__":
-    test()
+    test4()

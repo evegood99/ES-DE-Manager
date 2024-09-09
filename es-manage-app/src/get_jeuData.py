@@ -11,7 +11,7 @@ from thefuzz import process
 from thefuzz import fuzz
 import re
 import xml.etree.ElementTree as ET
-from main_new import MatchingRoms
+from main_new import MatchingRoms, normString
 
 SYSTEM_INFO_FILE_PATH = "./es-manage-app/src/info.json"
 DB_FILE_PATH = "./es-manage-app/src/games_meta.db"
@@ -131,7 +131,7 @@ class SSRomsMeta:
                 for f_name in line[1].split(';;'):
                     self.pre_read_file.setdefault(f_name, set([])).add(line[0])
                     
-    def jsonParsing(self, result_data, s_file_name, rom_meta=None):
+    def jsonParsing(self, result_data, s_file_name, ra_rom_meta_set=None):
         jeu_id = result_data['response']['jeu']['id']
         tmp_name_dict = {}
         for data in result_data['response']['jeu']['noms']:
@@ -228,17 +228,19 @@ class SSRomsMeta:
             self.roms_meta[rom_id] = (rom_id, None, rom_filename, None, rom_size, rom_crc, rom_md5, rom_sha1, jeu_id, game_name, alt, beta, demo, langs, langs_short, regions, regions_short)
         
         mr = mix_ratio(s_file_name, tmp_roms_file_name_set)
-        if mr[1] >= 50:
+        if mr[1] >= 80:
             s_rom_id_list = list(self.rom_name_set[mr[0]])
             from_info = self.roms_meta[s_rom_id_list[0]]
             alt, beta, demo, langs, langs_short, regions, regions_short = from_info[10], from_info[11], from_info[12], from_info[13], from_info[14], from_info[15], from_info[16],
-            if check_crc == False and rom_meta != None:
-                from_rom_crc = rom_meta[3]
-                self.roms_meta['ra_'+from_rom_crc] = ('ra_'+from_rom_crc,  rom_meta[0],  rom_meta[1], None,  rom_meta[2],  rom_meta[3],  rom_meta[4],  rom_meta[5], jeu_id, game_name, alt, beta, demo, langs, langs_short, regions, regions_short)
+            if check_crc == False and ra_rom_meta_set != None:
+                for rom_meta in ra_rom_meta_set:
+                    from_rom_crc = rom_meta[3]
+                    self.roms_meta['ra_'+from_rom_crc] = ('ra_'+from_rom_crc,  rom_meta[0],  rom_meta[1], None,  rom_meta[2],  rom_meta[3],  rom_meta[4],  rom_meta[5], jeu_id, game_name, alt, beta, demo, langs, langs_short, regions, regions_short)
         else:
-            if rom_meta != None:
-                from_rom_crc = rom_meta[3]
-                self.roms_meta['ra_'+from_rom_crc] = ('ra_'+from_rom_crc,  rom_meta[0],  rom_meta[1], None,  rom_meta[2],  rom_meta[3],  rom_meta[4],  rom_meta[5], jeu_id, game_name, None, None, None, None, None, None, None)
+            if ra_rom_meta_set != None:
+                for rom_meta in ra_rom_meta_set:
+                    from_rom_crc = rom_meta[3]
+                    self.roms_meta['ra_'+from_rom_crc] = ('ra_'+from_rom_crc,  rom_meta[0],  rom_meta[1], None,  rom_meta[2],  rom_meta[3],  rom_meta[4],  rom_meta[5], jeu_id, game_name, None, None, None, None, None, None, None)
 
         return s_rom_id_list
 
@@ -252,14 +254,9 @@ class SSRomsMeta:
             tmp_data[1] = ";;".join(tmp_split_data)
         self.roms_meta[s_rom_id] = tuple(tmp_data)
 
-
     def call_api(self, file_name, rom_meta=None):
-        if rom_meta != None:
-            from_rom_crc = rom_meta[3].lower()
-        else:
-            from_rom_crc = 'x'
 
-        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood2", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":file_name}
+        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":file_name}
         try:
             resp = requests.get(self.base_url, params=param, timeout=30)
         except requests.exceptions.Timeout as e:
@@ -270,8 +267,13 @@ class SSRomsMeta:
             json_data = json.loads(resp.text)
         else:
             if 'Erreur : Jeu non trouvée !' in resp.text or 'Erreur : Rom/Iso/Dossier non trouvée !' in resp.text:
-                r_file_name = removeBucket(file_name)
-                param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood2", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":r_file_name}
+                if not ' - ' in file_name:
+                    self.run_bucket.remove(file_name)
+                    print('Error : ', resp.text, '::',file_name)
+                    return 0
+                self.api_call_num += 1
+                r_file_name = file_name.split(' - ')[0].strip()
+                param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":r_file_name}
                 try:
                     resp = requests.get(self.base_url, params=param, timeout=30)
                 except requests.exceptions.Timeout as e:
@@ -284,7 +286,7 @@ class SSRomsMeta:
                     self.run_bucket.remove(file_name)
                     print('Error : ', resp.text, '::',file_name)
                     return 0
-            elif "Votre quota de scrape est dépassé pour aujourd'hui" in resp.text:
+            elif "Votre quota de scrape est dépassé pour aujourd'hui" in resp.text or 'Faite du tri dans vos fichiers roms et repassez demain' in resp.text:
                 self.stop_call_api = True
                 self.run_bucket.remove(file_name)
                 print('ERROR : qurter limit, stop call process')
@@ -332,40 +334,68 @@ class SSRomsMeta:
 
 
 
-    def makeDBTable(self):
+    def makeDBTable(self, data_name=None):
 
         xml_files_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'textual'
         r = os.listdir(xml_files_path)
-        name_set = set([])
+        name_set = {}
         for file_name in r:
             if file_name[-4:] != '.xml':
                 continue
-            name_set.add(remove_extension(file_name))
+            base_title, sub_title_list, bucket_str_list = normString(file_name)
+            if len(sub_title_list) > 0:
+                base_name =  base_title + ' - '.join(sub_title_list)           
+            else:
+                base_name = base_title
+            ori_file_name = remove_extension(file_name)
+            name_set.setdefault(base_name, set([])).add(ori_file_name)
         
+        if data_name != None:
+            name_set = {}
+            base_title, sub_title_list, bucket_str_list = normString(data_name)
+            if len(sub_title_list) > 0:
+                base_name =  base_title + ' - '+' '.join(sub_title_list)           
+            else:
+                base_name = base_title
+            ori_file_name = remove_extension(data_name)
+            name_set.setdefault(base_name, set([])).add(ori_file_name)
+
         th_list = []
         self.tot_search_num = len(name_set)
-        name_set = list(name_set)
-        random.shuffle(name_set)
+        # name_set = list(name_set)
+        # random.shuffle(name_set)
         while len(name_set)!=0:
 
             while True:
                 if len(self.run_bucket) <= 10:
                     break
 
-            file_name = name_set.pop(0)
-            self.get_num += 1
-            if file_name in self.pre_read_file:
-                print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(name_set), len(self.run_bucket))
-                continue
+            (base_name, src_roms_name_set) = name_set.popitem()
 
-            if file_name in self.rom_name_set:
-                s_rom_list = self.rom_name_set[file_name]
-                for s_rom in s_rom_list:
-                    self.update_src(file_name, s_rom)                
-                print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(name_set), len(self.run_bucket))
-                continue
-            else:
-                
+            self.get_num += 1
+            match_rom_name_set = set([])
+            for file_name in src_roms_name_set:
+                if file_name in self.pre_read_file:
+                    print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(name_set), len(self.run_bucket))
+                    match_rom_name_set.add(file_name)
+
+            for nm in match_rom_name_set:
+                if nm in src_roms_name_set:
+                    src_roms_name_set.remove(nm)
+
+            for file_name in src_roms_name_set:
+                if file_name in self.rom_name_set:
+                    s_rom_list = self.rom_name_set[file_name]
+                    for s_rom in s_rom_list:
+                        self.update_src(file_name, s_rom)                
+                    print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(name_set), len(self.run_bucket))
+                    match_rom_name_set.add(file_name)
+
+            for nm in match_rom_name_set:
+                if nm in src_roms_name_set:
+                    src_roms_name_set.remove(nm)
+
+            for file_name in src_roms_name_set:
                 mr = mix_ratio(file_name, tuple(self.rom_name_set.keys()))
                 if mr[1] >= 98:
                     print('no call api :',file_name, mr[0])
@@ -373,12 +403,16 @@ class SSRomsMeta:
                     for s_rom in s_rom_list:
                         self.update_src(file_name, s_rom)
                     print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(name_set), len(self.run_bucket))
-                    continue
+                    match_rom_name_set.add(file_name)
+         
+            if len(match_rom_name_set) > 0 :
+                continue
+
             if self.stop_call_api:
                 continue
-            self.run_bucket.add(file_name)        
+            self.run_bucket.add(base_name)        
             self.api_call_num += 1
-            t1 = Thread(target=self.call_api, args=(file_name,))
+            t1 = Thread(target=self.call_api, args=(base_name,))
             t1.start()            
             th_list.append(t1)
     
@@ -391,6 +425,7 @@ class SSRomsMeta:
 
         # self.after_merge_ra_meta()
         self.insertTable()
+
 
     def ra_parsing(self, total_str):
         pattern = 'game\s*\(([^()]*(?:\([^\)]*\)[^()]*)*)\)'
@@ -516,7 +551,7 @@ class SSRomsMeta:
                 file_list.append(RETROARCH_META_PATH+'\\'+'tosec'+'\\'+file_name)
                 break
         
-        ra_meta_set = set([])
+        ra_meta_set = {}
         for f_path in file_list:
             fp = open(f_path)
             try:
@@ -524,11 +559,21 @@ class SSRomsMeta:
             except UnicodeDecodeError:
                 fp = open(f_path, encoding='utf-8')
                 data = fp.read()
-            for line in self.ra_parsing(data):
-                ra_meta_set.add(line)
+            for line in self.ra_parsing(data): #(name, rom_name, rom_size, rom_crc, rom_md5, rom_sha1)
+                src_name = line[0]
+                rom_name = line[1]
+                base_title, sub_title_list, bucket_str_list = normString(src_name)
+                if len(sub_title_list) > 0:
+                    base_name =  base_title +' - '.join(sub_title_list)           
+                else:
+                    base_name = base_title
+
+                ra_meta_set.setdefault(base_name, set([])).add(line)
+
+                # ra_meta_set.add(line)
         self.tot_search_num = len(ra_meta_set)
-        ra_meta_set = list(ra_meta_set)
-        random.shuffle(ra_meta_set)
+        # ra_meta_set = list(ra_meta_set)
+        # random.shuffle(ra_meta_set)
         th_list = []
 
         while len(ra_meta_set)!=0:
@@ -538,75 +583,105 @@ class SSRomsMeta:
                     break
 
             self.get_num += 1
-            ra_rom_meta = ra_meta_set.pop(0)
-            ra_src_name = ra_rom_meta[0]
-            ra_file_name = ra_rom_meta[1]
-            ra_rom_size = ra_rom_meta[2]
-            ra_rom_crc = ra_rom_meta[3]
-            if ra_rom_crc != None:
-                ra_rom_crc = ra_rom_crc.lower()
-                if ra_rom_crc in self.crc_to_rom_id:
-                    s_rom_id = self.crc_to_rom_id[ra_rom_crc]
-                    self.update_src(ra_src_name, s_rom_id)
-                    continue
-                elif ra_rom_crc in self.roms_meta:
-                    continue
-            ra_rom_md5 = ra_rom_meta[4]
-            if  ra_rom_md5 != None:
-                ra_rom_md5 = ra_rom_md5.lower()
-                if ra_rom_md5 in self.md5_to_rom_id:
-                    s_rom_id = self.md5_to_rom_id[ra_rom_md5]
-                    self.update_src(ra_src_name, s_rom_id)
-                    continue
-            ra_rom_sha1 = ra_rom_meta[5]
-            if  ra_rom_sha1 != None:
-                ra_rom_sha1 = ra_rom_sha1.lower()
+            (base_name, ra_rom_meta_set) = ra_meta_set.popitem()
 
-            
+            match_data = set([])
 
-            file_name = ra_src_name
-            if file_name in self.pre_read_file:
-                from_rom_id_set = self.pre_read_file[file_name]
-                from_rom_id = random.choice(tuple(from_rom_id_set))
-                from_rom_info = self.roms_meta[from_rom_id]
-                jeu_id = from_rom_info[8]
-                game_name = from_rom_info[9]
-                rom_id = 'ra_'+ra_rom_crc
-                self.roms_meta[rom_id] = (rom_id, file_name, ra_file_name, None, ra_rom_size, ra_rom_crc, ra_rom_md5, ra_rom_sha1, jeu_id, game_name, from_rom_info[10], from_rom_info[11], from_rom_info[12], from_rom_info[13], from_rom_info[14], from_rom_info[15], from_rom_info[16])
-                print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(self.run_bucket))
-                continue
-            else:
-                mr = mix_ratio(file_name, tuple(self.pre_read_file.keys()))
-                if mr[1] >= 94:
-                    print('no call api :',file_name, mr[0])
-                    s_rom_list = list(self.pre_read_file[mr[0]])
-                    for s_rom in s_rom_list:
-                        self.update_src(file_name, s_rom)
-                    from_rom_info = self.roms_meta[s_rom_list[0]]
-                    jeu_id = from_rom_info[8]
-                    game_name = from_rom_info[9]
-                    rom_id = 'ra_'+ra_rom_crc
-                    self.roms_meta[rom_id] = (rom_id, file_name, ra_file_name, None, ra_rom_size, ra_rom_crc, ra_rom_md5, ra_rom_sha1, jeu_id, game_name, from_rom_info[10], from_rom_info[11], from_rom_info[12], from_rom_info[13], from_rom_info[14], from_rom_info[15], from_rom_info[16])
-                    print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(self.run_bucket))
-                    continue                
+            for ra_rom_meta in ra_rom_meta_set:
 
-            if file_name in self.rom_name_set:
-                s_rom_list = list(self.rom_name_set[file_name])
-                for s_rom in s_rom_list:
-                    self.update_src(file_name, s_rom)
-                from_rom_info = self.roms_meta[s_rom_list[0]]
-                jeu_id = from_rom_info[8]
-                game_name = from_rom_info[9]
-                rom_id = 'ra_'+ra_rom_crc
-                self.roms_meta[rom_id] = (rom_id, file_name, ra_file_name, None, ra_rom_size, ra_rom_crc, ra_rom_md5, ra_rom_sha1, jeu_id, game_name, from_rom_info[10], from_rom_info[11], from_rom_info[12], from_rom_info[13], from_rom_info[14], from_rom_info[15], from_rom_info[16])
-                print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(self.run_bucket))
-                continue
-            else:
+                ra_src_name = ra_rom_meta[0]
+                ra_rom_crc = ra_rom_meta[3]
+                if ra_rom_crc != None:
+                    ra_rom_crc = ra_rom_crc.lower()
+                    if ra_rom_crc in self.crc_to_rom_id:
+                        s_rom_id = self.crc_to_rom_id[ra_rom_crc]
+                        self.update_src(ra_src_name, s_rom_id)
+                        match_data.add(ra_rom_meta)
+
+                    elif ra_rom_crc in self.roms_meta:
+                        match_data.add(ra_rom_meta)
+
+            for data in match_data:
+                if data in ra_rom_meta_set:
+                    ra_rom_meta_set.remove(data)
+
+            for ra_rom_meta in ra_rom_meta_set:
+                ra_src_name = ra_rom_meta[0]
+                ra_rom_md5 = ra_rom_meta[4]
+                if  ra_rom_md5 != None:
+                    ra_rom_md5 = ra_rom_md5.lower()
+                    if ra_rom_md5 in self.md5_to_rom_id:
+                        s_rom_id = self.md5_to_rom_id[ra_rom_md5]
+                        self.update_src(ra_src_name, s_rom_id)
+                        match_data.add(ra_rom_meta)
+
+            for data in match_data:
+                if data in ra_rom_meta_set:
+                    ra_rom_meta_set.remove(data)
                 
-                mr = mix_ratio(file_name, tuple(self.rom_name_set.keys()))
-                if mr[1] >= 94:
-                    print('no call api :',file_name, mr[0])
-                    s_rom_list = list(self.rom_name_set[mr[0]])
+            for ra_rom_meta in ra_rom_meta_set:
+                ra_src_name = ra_rom_meta[0]
+                ra_file_name = ra_rom_meta[1]
+                ra_rom_size = ra_rom_meta[2]
+                ra_rom_crc = ra_rom_meta[3]
+                if ra_rom_crc != None:
+                    ra_rom_crc = ra_rom_crc.lower()
+                ra_rom_md5 = ra_rom_meta[4]
+                if  ra_rom_md5 != None:
+                    ra_rom_md5 = ra_rom_md5.lower()
+                ra_rom_sha1 = ra_rom_meta[5]
+                if  ra_rom_sha1 != None:
+                    ra_rom_sha1 = ra_rom_sha1.lower()
+
+                file_name = ra_src_name
+                if file_name in self.pre_read_file:
+                    from_rom_id_set = self.pre_read_file[file_name]
+                    from_rom_id = random.choice(tuple(from_rom_id_set))
+                    from_rom_info = self.roms_meta[from_rom_id]
+                    jeu_id = from_rom_info[8]
+                    game_name = from_rom_info[9]
+                    rom_id = 'ra_'+ra_rom_crc
+                    self.roms_meta[rom_id] = (rom_id, file_name, ra_file_name, None, ra_rom_size, ra_rom_crc, ra_rom_md5, ra_rom_sha1, jeu_id, game_name, from_rom_info[10], from_rom_info[11], from_rom_info[12], from_rom_info[13], from_rom_info[14], from_rom_info[15], from_rom_info[16])
+                    print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(self.run_bucket))
+                    match_data.add(ra_rom_meta)
+
+                else:
+                    mr = mix_ratio(file_name, tuple(self.pre_read_file.keys()))
+                    if mr[1] >= 94:
+                        print('no call api :',file_name, mr[0])
+                        s_rom_list = list(self.pre_read_file[mr[0]])
+                        for s_rom in s_rom_list:
+                            self.update_src(file_name, s_rom)
+                        from_rom_info = self.roms_meta[s_rom_list[0]]
+                        jeu_id = from_rom_info[8]
+                        game_name = from_rom_info[9]
+                        rom_id = 'ra_'+ra_rom_crc
+                        self.roms_meta[rom_id] = (rom_id, file_name, ra_file_name, None, ra_rom_size, ra_rom_crc, ra_rom_md5, ra_rom_sha1, jeu_id, game_name, from_rom_info[10], from_rom_info[11], from_rom_info[12], from_rom_info[13], from_rom_info[14], from_rom_info[15], from_rom_info[16])
+                        print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(self.run_bucket))
+                        match_data.add(ra_rom_meta)
+
+            for data in match_data:
+                if data in ra_rom_meta_set:
+                    ra_rom_meta_set.remove(data)
+                
+            for ra_rom_meta in ra_rom_meta_set:
+                ra_src_name = ra_rom_meta[0]
+                ra_file_name = ra_rom_meta[1]
+                ra_rom_size = ra_rom_meta[2]
+                ra_rom_crc = ra_rom_meta[3]
+                if ra_rom_crc != None:
+                    ra_rom_crc = ra_rom_crc.lower()
+                ra_rom_md5 = ra_rom_meta[4]
+                if  ra_rom_md5 != None:
+                    ra_rom_md5 = ra_rom_md5.lower()
+                ra_rom_sha1 = ra_rom_meta[5]
+                if  ra_rom_sha1 != None:
+                    ra_rom_sha1 = ra_rom_sha1.lower()
+
+                file_name = ra_src_name
+
+                if file_name in self.rom_name_set:
+                    s_rom_list = list(self.rom_name_set[file_name])
                     for s_rom in s_rom_list:
                         self.update_src(file_name, s_rom)
                     from_rom_info = self.roms_meta[s_rom_list[0]]
@@ -615,10 +690,34 @@ class SSRomsMeta:
                     rom_id = 'ra_'+ra_rom_crc
                     self.roms_meta[rom_id] = (rom_id, file_name, ra_file_name, None, ra_rom_size, ra_rom_crc, ra_rom_md5, ra_rom_sha1, jeu_id, game_name, from_rom_info[10], from_rom_info[11], from_rom_info[12], from_rom_info[13], from_rom_info[14], from_rom_info[15], from_rom_info[16])
                     print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(self.run_bucket))
-                    continue
-            self.run_bucket.add(file_name)        
+                    match_data.add(ra_rom_meta)
+                else:
+                    
+                    mr = mix_ratio(file_name, tuple(self.rom_name_set.keys()))
+                    if mr[1] >= 94:
+                        print('no call api :',file_name, mr[0])
+                        s_rom_list = list(self.rom_name_set[mr[0]])
+                        for s_rom in s_rom_list:
+                            self.update_src(file_name, s_rom)
+                        from_rom_info = self.roms_meta[s_rom_list[0]]
+                        jeu_id = from_rom_info[8]
+                        game_name = from_rom_info[9]
+                        rom_id = 'ra_'+ra_rom_crc
+                        self.roms_meta[rom_id] = (rom_id, file_name, ra_file_name, None, ra_rom_size, ra_rom_crc, ra_rom_md5, ra_rom_sha1, jeu_id, game_name, from_rom_info[10], from_rom_info[11], from_rom_info[12], from_rom_info[13], from_rom_info[14], from_rom_info[15], from_rom_info[16])
+                        print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(self.run_bucket))
+                        match_data.add(ra_rom_meta)
+
+            if len(match_data) > 0 :
+                continue
+
+            for data in match_data:
+                if data in ra_rom_meta_set:
+                    ra_rom_meta_set.remove(data)
+
+
+            self.run_bucket.add(base_name)        
             self.api_call_num += 1
-            t1 = Thread(target=self.call_api, args=(file_name, ra_rom_meta))
+            t1 = Thread(target=self.call_api, args=(base_name, ra_rom_meta_set))
             t1.start()            
             th_list.append(t1)
     
@@ -629,6 +728,7 @@ class SSRomsMeta:
 
         print('process join')
         self.insertTable()
+
 
     def addTentacleMeta(self):
         self.system_name
@@ -667,13 +767,7 @@ class SSRomsMeta:
 
             print(path, '-----------------------------------------',mr)
 
-def test():
-    system_name = 'ps2'
-    ss= SSRomsMeta(system_name)
-    # ss.makeDBTable()
-    # ss.after_merge_ra_meta()
-    ss.check_data()
-    # ss.addTentacleMeta()
+
 
 def test2():
 
@@ -718,6 +812,14 @@ def test2():
 
         print(name, rom_name, rom_size, rom_crc, rom_md5, rom_sha1)
     
+
+def test():
+    system_name = 'nds'
+    ss= SSRomsMeta(system_name)
+    ss.makeDBTable()
+    ss.after_merge_ra_meta()
+    # ss.check_data()
+    # ss.addTentacleMeta()
 
 
 if __name__ == "__main__":
