@@ -11,7 +11,7 @@ from thefuzz import process
 from thefuzz import fuzz
 import re
 import xml.etree.ElementTree as ET
-from main_new import MatchingRoms, normString
+from main_new import MatchingRoms, normString, remove_extension
 
 SYSTEM_INFO_FILE_PATH = "./es-manage-app/src/info.json"
 DB_FILE_PATH = "./es-manage-app/src/games_meta.db"
@@ -22,10 +22,6 @@ RETROARCH_META_PATH = r"E:\Emul\Full_Roms_meta"
 TENTACLE_ROM_META_PATH = "./es-manage-app/src/tentacle_meta"
 
 
-def remove_extension(filename):
-    # os.path.splitext()를 사용하여 파일명과 확장자를 분리
-    basename, _ = os.path.splitext(filename)
-    return basename
 
 def cleansingText(inputText):
     if inputText == None:
@@ -255,6 +251,9 @@ class SSRomsMeta:
         self.roms_meta[s_rom_id] = tuple(tmp_data)
 
     def call_api(self, file_name, rom_meta=None):
+        if self.stop_call_api:
+            self.run_bucket.remove(file_name)
+            return 0
 
         param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":file_name}
         try:
@@ -367,6 +366,9 @@ class SSRomsMeta:
         while len(name_set)!=0:
 
             while True:
+                if self.stop_call_api:
+                    break
+
                 if len(self.run_bucket) <= 10:
                     break
 
@@ -409,7 +411,7 @@ class SSRomsMeta:
                 continue
 
             if self.stop_call_api:
-                continue
+                break
             self.run_bucket.add(base_name)        
             self.api_call_num += 1
             t1 = Thread(target=self.call_api, args=(base_name,))
@@ -730,9 +732,9 @@ class SSRomsMeta:
         self.insertTable()
 
 
-    def addTentacleMeta(self):
-        self.system_name
-
+    def addTentacleMetaAndFillName(self):
+        cur = self.con.cursor()
+        tb_name = 'roms_'+self.system_name
         xml_file_path = TENTACLE_ROM_META_PATH+'/'+self.system_name+'.xml'
         tree = ET.parse(xml_file_path)
         root = tree.getroot()
@@ -741,31 +743,8 @@ class SSRomsMeta:
             path = child.find('path').text
             path = path[2:-4]
             title = child.find('name').text
-            # print(path, title)
-
-            if path in self.pre_read_file:
-                s_rom_id_list = self.pre_read_file[path]
-                for s_rom_id in s_rom_id_list:
-                    data = self.roms_meta[s_rom_id]
-                print(path,'||',data[2],'||',title)
-                continue
-
-            if path in self.rom_name_set:
-                s_rom_id_list = self.rom_name_set[path]
-                for s_rom_id_list in s_rom_id_list:
-                    data = self.roms_meta[s_rom_id]
-                print(path,'||',data[2],'||',title)
-                continue
-            else:
-                mr = mix_ratio(path, tuple(self.rom_name_set.keys()))
-                if mr[1] >= 94:
-                    s_rom_id_list = self.rom_name_set[mr[0]]
-                    for s_rom_id_list in s_rom_id_list:
-                        data = self.roms_meta[s_rom_id]
-                    print(path,'||',data[2],'||',title)
-                    continue  
-
-            print(path, '-----------------------------------------',mr)
+            cur.execute(f'UPDATE {tb_name} SET filename_kor = "{title}" WHERE filename LIKE "%{path}.%"')
+        self.con.commit()
 
 
 
@@ -814,12 +793,12 @@ def test2():
     
 
 def test():
-    system_name = 'nds'
+    system_name = 'famicom'
     ss= SSRomsMeta(system_name)
-    ss.makeDBTable()
-    ss.after_merge_ra_meta()
+    # ss.makeDBTable()
+    # ss.after_merge_ra_meta()
     # ss.check_data()
-    # ss.addTentacleMeta()
+    ss.addTentacleMetaAndFillName()
 
 
 if __name__ == "__main__":

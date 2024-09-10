@@ -141,10 +141,16 @@ def normString(text):
 
     return src_string, sub_list, find_r_list
 
-def remove_extension(filename):
-    # os.path.splitext()를 사용하여 파일명과 확장자를 분리
-    basename, _ = os.path.splitext(filename)
-    return basename
+# def remove_extension(filename):
+#     # os.path.splitext()를 사용하여 파일명과 확장자를 분리
+#     basename, _ = os.path.splitext(filename)
+#     return basename
+
+def remove_extension(file_name):
+    # 확장자가 있는 경우에만 제거 (마지막 점 이후에 영문자나 숫자로 이루어진 확장자가 있는 경우)
+    if re.search(r'\.[a-zA-Z0-9]+$', file_name):
+        return re.sub(r'\.[a-zA-Z0-9]+$', '', file_name)
+    return file_name
 
 def removeBucket(t_str):
     pattern = '(\([^)]+\)|(\[+[^)]+\]))'
@@ -684,10 +690,14 @@ def test3():
 
 def test4():
 
-    text1 = "A-mazing Tater (Atlus)[tr es]"
-    text2 = "Tantei Jinguji Saburo - Innocent Black (Japan).iso"
+    text1 = "Double Strike - Aerial Attack Force (v1.0).7z"
+    text2 = "더블 스트라이크- 에어리얼 어택 포스 (v1.0)(해적판).jpeg"
     print(normString(text1))
     print(normString(text2))
+    print(removeBucket(remove_extension(text1)))
+    print(removeBucket(remove_extension(text2)))
+    print(remove_extension(text1))
+    print(remove_extension(text2))
 
 def test5():
     base_str = 'kkk'
