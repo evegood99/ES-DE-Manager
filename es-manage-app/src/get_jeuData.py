@@ -11,17 +11,30 @@ from thefuzz import process
 from thefuzz import fuzz
 import re
 import xml.etree.ElementTree as ET
-from main_new import MatchingRoms, normString, remove_extension
+from main_new import MatchingRoms, normString, remove_extension, get_crc
+from collections import Counter
+import time
+from shutil import copyfile
 
 SYSTEM_INFO_FILE_PATH = "./es-manage-app/src/info.json"
 DB_FILE_PATH = "./es-manage-app/src/games_meta.db"
 ROMS_XML_BASE_PATH = r'E:\Emul\Full_Roms_assets'
 ROMS_TABLE_SCHEMA = "(id text, src_name text, filename text, filename_kor text, rom_size integer, rom_crc text, rom_md5 text, rom_sha1 text, game_id integer, game_name text, alt integer, beta integer, demo integer, langs text, langs_short text, regions text, regions_short text)"
 GAMES_TABLE_SCHEMA = "(id text, name text, name_kor text, desc text, desc_kor text, genre text, releasedate text, developer text, players text)"
+GAMES_TABLE_ADD_SCHEMA = (('titlescreens', 'text'), ('screenshots', 'text'), ('wheel', 'text'), ('cover', 'text'), ('box2dside', 'text'), ('boxtextur', 'text'), ('box3d', 'text'), ('videos', 'text'), ('manuals', 'text'), ('support', 'text'))
 RETROARCH_META_PATH = r"E:\Emul\Full_Roms_meta"
 TENTACLE_ROM_META_PATH = "./es-manage-app/src/tentacle_meta"
+ROMS_CACHE_PATH = r'E:\Emul\Full_Roms_cache'
 
 
+
+def most_frequent_element(lst):
+    # 리스트의 빈도수 계산
+    counter = Counter(lst)
+    # 가장 빈도수가 높은 요소와 그 빈도수 추출
+    most_common = counter.most_common(1)
+    # 가장 빈도수가 높은 요소를 반환
+    return most_common[0][0] if most_common else None
 
 def cleansingText(inputText):
     if inputText == None:
@@ -65,6 +78,9 @@ class SSRomsMeta:
     def __init__(self, system_name):
         self.con = sqlite3.connect(DB_FILE_PATH)
         self.base_url = "https://api.screenscraper.fr/api2/jeuInfos.php"
+        self.base_media_url = "https://api.screenscraper.fr/api2/mediaJeu.php"
+        self.base_video_url = "https://api.screenscraper.fr/api2/mediaVideoJeu.php"
+        self.base_manual_url = "https://api.screenscraper.fr/api2/mediaManuelJeu.php"
         json_fp = open(SYSTEM_INFO_FILE_PATH)
         self.system_info = json.load(json_fp)['system_info']
         for sys_obj in self.system_info:
@@ -127,8 +143,13 @@ class SSRomsMeta:
                 for f_name in line[1].split(';;'):
                     self.pre_read_file.setdefault(f_name, set([])).add(line[0])
                     
-    def jsonParsing(self, result_data, s_file_name, ra_rom_meta_set=None):
+    def jsonParsing(self, result_data_str, s_file_name, ra_rom_meta_set=None):
+        result_data = json.loads(result_data_str)
         jeu_id = result_data['response']['jeu']['id']
+
+        with open(ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'json'+'\\'+str(jeu_id)+'.json','w', encoding='utf-8') as fp:
+            fp.write(result_data_str)
+
         tmp_name_dict = {}
         for data in result_data['response']['jeu']['noms']:
             tmp_name_dict[data['region']] = data['text']
@@ -169,9 +190,11 @@ class SSRomsMeta:
             s_rom_id = int(result_data['response']['jeu']['rom']['id'])
             s_rom_id_list = [s_rom_id]
 
+        self.games_meta[jeu_id] = (jeu_id, game_name, None, desciption, None, genre, release_date, developer, players)
+        if not 'roms' in result_data['response']['jeu']:
+            return []
         roms_data = result_data['response']['jeu']['roms']
 
-        self.games_meta[jeu_id] = (jeu_id, game_name, None, desciption, None, genre, release_date, developer, players)
         tmp_roms_file_name_set = set([])
         check_crc = False
         alt, beta, demo, langs, langs_short, regions, regions_short = None, None, None, None, None, None, None
@@ -231,11 +254,15 @@ class SSRomsMeta:
             if check_crc == False and ra_rom_meta_set != None:
                 for rom_meta in ra_rom_meta_set:
                     from_rom_crc = rom_meta[3]
+                    if from_rom_crc == None:
+                        continue
                     self.roms_meta['ra_'+from_rom_crc] = ('ra_'+from_rom_crc,  rom_meta[0],  rom_meta[1], None,  rom_meta[2],  rom_meta[3],  rom_meta[4],  rom_meta[5], jeu_id, game_name, alt, beta, demo, langs, langs_short, regions, regions_short)
         else:
             if ra_rom_meta_set != None:
                 for rom_meta in ra_rom_meta_set:
                     from_rom_crc = rom_meta[3]
+                    if from_rom_crc == None:
+                        continue
                     self.roms_meta['ra_'+from_rom_crc] = ('ra_'+from_rom_crc,  rom_meta[0],  rom_meta[1], None,  rom_meta[2],  rom_meta[3],  rom_meta[4],  rom_meta[5], jeu_id, game_name, None, None, None, None, None, None, None)
 
         return s_rom_id_list
@@ -255,7 +282,7 @@ class SSRomsMeta:
             self.run_bucket.remove(file_name)
             return 0
 
-        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":file_name}
+        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood1", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":file_name}
         try:
             resp = requests.get(self.base_url, params=param, timeout=30)
         except requests.exceptions.Timeout as e:
@@ -263,7 +290,7 @@ class SSRomsMeta:
             self.run_bucket.remove(file_name)
             return 0
         if resp.status_code == 200:
-            json_data = json.loads(resp.text)
+            json_data = resp.text
         else:
             if 'Erreur : Jeu non trouvée !' in resp.text or 'Erreur : Rom/Iso/Dossier non trouvée !' in resp.text:
                 if not ' - ' in file_name:
@@ -272,7 +299,7 @@ class SSRomsMeta:
                     return 0
                 self.api_call_num += 1
                 r_file_name = file_name.split(' - ')[0].strip()
-                param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":r_file_name}
+                param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood1", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "romtype":"rom", "romnom":r_file_name}
                 try:
                     resp = requests.get(self.base_url, params=param, timeout=30)
                 except requests.exceptions.Timeout as e:
@@ -280,7 +307,7 @@ class SSRomsMeta:
                     self.run_bucket.remove(file_name)
                     return 0
                 if resp.status_code == 200:
-                    json_data = json.loads(resp.text)
+                    json_data = resp.text
                 else:
                     self.run_bucket.remove(file_name)
                     print('Error : ', resp.text, '::',file_name)
@@ -300,6 +327,60 @@ class SSRomsMeta:
             self.update_src(file_name, s_rom_id)
         
         self.run_bucket.remove(file_name)
+
+    def call_api2(self, game_id, output_xml_files_path):
+        if self.stop_call_api:
+            self.run_bucket.remove(game_id)
+            return 0
+
+        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "output":"json", "ssid":"evegood1", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "gameid":game_id}
+        try:
+            resp = requests.get(self.base_url, params=param, timeout=30)
+        except requests.exceptions.Timeout as e:
+            print('Timeout Error : ',game_id)
+            self.run_bucket.remove(game_id)
+            return 0
+        if resp.status_code == 200:
+            with open(output_xml_files_path+'\\'+str(game_id)+'.json','w', encoding='utf-8') as fp:
+                fp.write(str(resp.text))
+            self.run_bucket.remove(game_id)
+
+            # json_data = json.loads(resp.text)
+            
+        else:
+            if 'Erreur : Jeu non trouvée !' in resp.text or 'Erreur : Rom/Iso/Dossier non trouvée !' in resp.text:
+                self.run_bucket.remove(game_id)
+                print('Error : ', resp.text, '::',game_id)
+                return 0
+            elif "Votre quota de scrape est dépassé pour aujourd'hui" in resp.text or 'Faite du tri dans vos fichiers roms et repassez demain' in resp.text:
+                self.stop_call_api = True
+                self.run_bucket.remove(game_id)
+                print('ERROR : qurter limit, stop call process')
+                return 0
+
+            else:
+                self.run_bucket.remove(game_id)
+                print('Error : ', resp.text, '::',game_id)
+                return 0
+
+        # tmp_name_dict = {}
+        # for data in json_data['response']['jeu']['noms']:
+        #     tmp_name_dict[data['region']] = data['text']
+        # game_name = tmp_name_dict['ss']            
+        # self.run_bucket.remove(game_id)
+        # if ':' in game_name:
+        #     game_name = game_name.replace(':',' ')
+        # if '?' in game_name:
+        #     game_name = game_name.replace('?',' ')
+        # if '/' in game_name:
+        #     game_name = game_name.replace('/',' ')
+        # if '*' in game_name:
+        #     game_name = game_name.replace('*',' ')
+
+        # with open(output_xml_files_path+'\\'+game_name+'.xml','w') as fp:
+        #     fp.write(str(game_id))
+
+
 
     def insertTable(self):
         # x = list(self.games_meta.values())
@@ -334,12 +415,24 @@ class SSRomsMeta:
 
 
     def makeDBTable(self, data_name=None):
+        output_xml_files_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'json'
+        read_set = set([])
+        if os.path.exists(output_xml_files_path):
+            for f_name in os.listdir(output_xml_files_path):
+                if os.path.exists(output_xml_files_path+'\\'+f_name):
+                    read_set.add(f_name[:-5])             
+            pass
+        else:
+            os.makedirs(output_xml_files_path)
 
         xml_files_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'textual'
+        # xml_files_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'wheels'
+
         r = os.listdir(xml_files_path)
         name_set = {}
         for file_name in r:
             if file_name[-4:] != '.xml':
+            # if file_name[-4:] != '.png':
                 continue
             base_title, sub_title_list, bucket_str_list = normString(file_name)
             if len(sub_title_list) > 0:
@@ -371,6 +464,9 @@ class SSRomsMeta:
 
                 if len(self.run_bucket) <= 10:
                     break
+
+            if self.stop_call_api:
+                break
 
             (base_name, src_roms_name_set) = name_set.popitem()
 
@@ -430,11 +526,12 @@ class SSRomsMeta:
 
 
     def ra_parsing(self, total_str):
-        pattern = 'game\s*\(([^()]*(?:\([^\)]*\)[^()]*)*)\)'
-
+        # pattern = 'game\s*\(([^()]*(?:\([^\)]*\)[^()]*)*)\)'
+        pattern = r'game\s*\([\s\S]*?\)\n\)\n'
         name_pattern = 'name\s+"([^"]*)"\n'
         rom_pattern = '\srom\s*\(([^()]*(?:\([^\)]*\)[^()]*)*)\)'
         rom_name_pattern = 'name\s+"([^"]*)"'
+        rom_name_pattern2 = 'name\s+([^\s]*)\s'
         rom_size_pattern = 'size\s+([^\s]*)\s'
         rom_crc_pattern = 'crc\s+([^\s]*)\s'
         rom_md5_pattern = 'md5\s+([^\s]*)\s'
@@ -444,14 +541,18 @@ class SSRomsMeta:
         data_list = []
         result = re.findall(pattern, total_str)
         for line1 in result:
+            # try:
+            # line1 = line1 + ' )'
+            # print(line1)
+            name = re.findall(name_pattern, line1)[0]
+            rom_str = re.findall(rom_pattern, line1)[0]
             try:
-                line1 = line1 + ' )'
-                name = re.findall(name_pattern, line1)[0]
-                rom_str = re.findall(rom_pattern, line1)[0]
                 rom_name = re.findall(rom_name_pattern, rom_str)[0]
-                rom_size = re.findall(rom_size_pattern, rom_str)
             except:
-                continue
+                rom_name = re.findall(rom_name_pattern2, rom_str)[0]
+            rom_size = re.findall(rom_size_pattern, rom_str)
+            # except:
+                # continue
             if rom_size == []:
                 rom_size = None
             else:
@@ -529,6 +630,54 @@ class SSRomsMeta:
         for f_name in try_name_data:
             print(f_name)
         print(len(try_name_data))
+
+    def ra_meta_for_noname(self):
+        file_list = []
+        self.get_num = 0
+        for file_name in os.listdir(RETROARCH_META_PATH):
+            if file_name == self.ra_system_name+".dat":
+                file_list.append(RETROARCH_META_PATH+'\\'+file_name)
+                break
+        
+        for file_name in os.listdir(RETROARCH_META_PATH+'\\'+'no-intro'):
+            if file_name == self.ra_system_name+".dat":
+                file_list.append(RETROARCH_META_PATH+'\\'+'no-intro'+'\\'+file_name)
+                break
+
+        for file_name in os.listdir(RETROARCH_META_PATH+'\\'+'redump'):
+            if file_name == self.ra_system_name+".dat":
+                file_list.append(RETROARCH_META_PATH+'\\'+'redump'+'\\'+file_name)
+                break
+
+        for file_name in os.listdir(RETROARCH_META_PATH+'\\'+'tosec'):
+            if file_name == self.ra_system_name+".dat":
+                file_list.append(RETROARCH_META_PATH+'\\'+'tosec'+'\\'+file_name)
+                break
+
+        params = []
+        for f_path in file_list:
+            fp = open(f_path)
+            try:
+                data = fp.read()
+            except UnicodeDecodeError:
+                fp = open(f_path, encoding='utf-8')
+                data = fp.read()
+            for line in self.ra_parsing(data): #(name, rom_name, rom_size, rom_crc, rom_md5, rom_sha1)
+                src_name = line[0]
+                rom_name = line[1]  
+                # print(src_name, rom_name)      
+                params.append((src_name, rom_name))
+        
+        # for line in params:
+            # print(line)
+
+        tb_name = 'roms_'+self.system_name
+        cur = self.con.cursor()
+        cur.execute(f"UPDATE {tb_name} SET src_name=game_name")
+        cur.executemany(f"UPDATE {tb_name} SET src_name=? WHERE filename=?",params)
+        self.con.commit()
+
+            
         
     def after_merge_ra_meta(self):
         file_list = []
@@ -581,8 +730,14 @@ class SSRomsMeta:
         while len(ra_meta_set)!=0:
 
             while True:
+                if self.stop_call_api:
+                    break
+
                 if len(self.run_bucket) <= 10:
                     break
+
+            if self.stop_call_api:
+                break
 
             self.get_num += 1
             (base_name, ra_rom_meta_set) = ra_meta_set.popitem()
@@ -628,6 +783,8 @@ class SSRomsMeta:
                 ra_rom_crc = ra_rom_meta[3]
                 if ra_rom_crc != None:
                     ra_rom_crc = ra_rom_crc.lower()
+                else:
+                    continue
                 ra_rom_md5 = ra_rom_meta[4]
                 if  ra_rom_md5 != None:
                     ra_rom_md5 = ra_rom_md5.lower()
@@ -673,6 +830,8 @@ class SSRomsMeta:
                 ra_rom_crc = ra_rom_meta[3]
                 if ra_rom_crc != None:
                     ra_rom_crc = ra_rom_crc.lower()
+                else:
+                    continue
                 ra_rom_md5 = ra_rom_meta[4]
                 if  ra_rom_md5 != None:
                     ra_rom_md5 = ra_rom_md5.lower()
@@ -709,13 +868,14 @@ class SSRomsMeta:
                         print(self.get_num, '/', self.tot_search_num, '('+str(self.api_call_num)+')', len(self.run_bucket))
                         match_data.add(ra_rom_meta)
 
-            if len(match_data) > 0 :
-                continue
-
             for data in match_data:
                 if data in ra_rom_meta_set:
                     ra_rom_meta_set.remove(data)
 
+            if len(match_data) > 0 :
+                continue
+            if self.stop_call_api:
+                break
 
             self.run_bucket.add(base_name)        
             self.api_call_num += 1
@@ -735,16 +895,444 @@ class SSRomsMeta:
     def addTentacleMetaAndFillName(self):
         cur = self.con.cursor()
         tb_name = 'roms_'+self.system_name
+
         xml_file_path = TENTACLE_ROM_META_PATH+'/'+self.system_name+'.xml'
-        tree = ET.parse(xml_file_path)
-        root = tree.getroot()
-        result = {}
-        for child in root.findall('game'):
-            path = child.find('path').text
-            path = path[2:-4]
-            title = child.find('name').text
-            cur.execute(f'UPDATE {tb_name} SET filename_kor = "{title}" WHERE filename LIKE "%{path}.%"')
+        if os.path.exists(xml_file_path):
+            tree = ET.parse(xml_file_path)
+            root = tree.getroot()
+            result = {}
+            for child in root.findall('game'):
+                path = child.find('path').text
+                path = '%'+path[2:-4]+'.%'
+                title = child.find('name').text
+                cur.execute(f'UPDATE {tb_name} SET filename_kor = ? WHERE filename LIKE ? AND filename_kor is null',(title, path))
+            self.con.commit()
+
+        r = cur.execute(f"SELECT * FROM {tb_name}")
+        game_data_dict = {}
+        rom_id_dict = {}
+        dup_rom_id_dict = {}
+        for line in r:
+            rom_id = line[0]
+            src_name_str = line[1]
+            if src_name_str == None:
+                f_src_name = None
+                src_name_str_list = []
+            else:
+                src_name_str_list = line[1].split(';;')
+                f_src_name = removeBucket(src_name_str_list[0])
+
+            if rom_id in rom_id_dict:
+                rom_id_dict[rom_id].update(set(src_name_str_list))
+                dup_rom_id_dict[rom_id] = rom_id_dict[rom_id]
+            else:
+                rom_id_dict[rom_id] = set(src_name_str_list)
+            
+            file_name = line[2]
+            f_file_name = removeBucket(remove_extension(file_name))
+            file_name_kor = line[3]
+            if file_name_kor == None:
+                f_file_name_kor = None
+            else:
+                f_file_name_kor = removeBucket(file_name_kor)
+            game_id = line[8]
+            game_data_dict.setdefault(game_id, []).append({'rom_id':rom_id, 'rom_name':f_file_name, 'ename':f_src_name, 'kname':f_file_name_kor})                
+            
+
+        params = []
+        for rom_id in dup_rom_id_dict:
+            src_name_str_list = dup_rom_id_dict[rom_id]
+            if len(src_name_str_list) == 0:
+                src_name_str = None
+            else:
+                src_name_str = ';;'.join(src_name_str_list)
+            params.append((src_name_str, rom_id))
+
+        cur.executemany(f"UPDATE {tb_name} SET src_name=? WHERE id=?", params)
+        cur.execute(f"DELETE FROM {tb_name} WHERE ROWID NOT IN(SELECT MIN(ROWID) FROM {tb_name} GROUP BY id)")
         self.con.commit()
+
+        r = cur.execute(f"SELECT * FROM {tb_name}")
+
+
+        for game_id in game_data_dict:
+            # if game_id != 1919:
+            #     continue
+            data_list = game_data_dict[game_id]
+            k_name_data = {}
+            e_name_data = {}
+            k_name_match_data = {}
+            e_name_match_data = {}
+            # print(data_list)
+            for data in data_list:
+                rom_id = data['rom_id']
+                rom_name = data['rom_name']
+                ename = data['ename']
+                kname = data['kname']
+                if ename != None:
+                    e_name_data.setdefault(rom_name, []).append(ename)
+                else:
+                    e_name_match_data[(rom_name, rom_id)] = None
+                if kname != None:
+                    k_name_data.setdefault(rom_name, []).append(kname)
+                else:
+                    k_name_match_data[(rom_name, rom_id)] = None
+            for rom_name in e_name_data:
+                e_name_data[rom_name] = most_frequent_element(e_name_data[rom_name])
+
+            for rom_name in k_name_data:
+                k_name_data[rom_name] = most_frequent_element(k_name_data[rom_name])
+
+            if len(e_name_data) > 0:
+                for (rom_name, rom_id) in e_name_match_data:
+                    r = mix_ratio(rom_name, e_name_data.keys())
+                    sel_rom_name = r[0]
+                    e_name_match_data[(rom_name, rom_id)] = e_name_data[sel_rom_name]
+            
+            if len(k_name_data) > 0:
+                for (rom_name, rom_id) in k_name_match_data:
+                    r = mix_ratio(rom_name, k_name_data.keys())
+                    sel_rom_name = r[0]
+                    k_name_match_data[(rom_name, rom_id)] = k_name_data[sel_rom_name]
+
+            params_e = []
+            for (rom_name, rom_id) in e_name_match_data:
+                e_name = e_name_match_data[(rom_name, rom_id)]
+                params_e.append((e_name, rom_id))
+
+            params_k = []
+            for (rom_name, rom_id)in k_name_match_data:
+                k_name = k_name_match_data[(rom_name, rom_id)]
+                params_k.append((k_name, rom_id))
+
+
+            cur.executemany(f"UPDATE {tb_name} SET src_name=? WHERE id=?", params_e)
+            cur.executemany(f"UPDATE {tb_name} SET filename_kor=? WHERE id=?", params_k)
+
+        cur.execute(f"UPDATE {tb_name} SET src_name = game_name where src_name is null")
+        self.con.commit()
+
+    def getAddMedia(self):
+        roms_cache_path = ROMS_CACHE_PATH+'\\'+str(self.sys_id)
+        cached_data = set([])
+        for file_name in os.listdir(roms_cache_path):
+            file_name = file_name[:-4]
+            f = file_name.split('_')
+            game_id = f[0]
+            media_type = f[1]
+            if media_type in ['videos']:
+                region = None
+            else:
+                region = f[2]
+                cached_data.add((game_id, media_type, region))
+            cached_data.add((game_id, media_type))
+
+        regions = set(['jp','kr','wor','us','eu','ss'])
+        media_type_set = {'sstitle':'titlescreens', 'ss':'screenshots', 'wheel':'wheel', 'wheel-hd':'wheel', 'box-2D':'cover', 'box-2D-side':'box2dside', 'box-texture':'boxtexture', 'box-3D':'box3d', 'video':'videos', 'manuel':'manuals', 'support-2D':'support'}
+        json_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'json'
+        n = 0
+
+        pr_data_list = []
+        for file_name in set(os.listdir(json_path)):
+            with open(json_path+'\\'+file_name, encoding='utf-8') as fp:
+                result_data = json.load(fp)
+                game_id = result_data['response']['jeu']['id']
+                game_name_sample = result_data['response']['jeu']['noms'][0]['text']
+                for media_data in result_data['response']['jeu']['medias']:
+
+                    m_type = media_data['type']
+                    if m_type in media_type_set:
+                        if m_type == 'manuel':
+                            region = media_data['region']
+                            if region in regions:
+                                m_region_ext = '_'+region+'.pdf'
+                            else:
+                                continue
+                        elif m_type == 'video':
+                            region = None
+                            m_region_ext = '.mp4'
+                        else:
+                            region = media_data['region']
+                            if region in regions:
+                                m_region_ext = '_'+region+'.pdf'
+                            else:
+                                continue
+                            m_region_ext = '_'+region+'.png'
+                            
+                        m_type_mid_name = media_type_set[m_type]
+
+                        if (game_id, m_type_mid_name) in cached_data:
+                            if region != None and not (game_id, m_type_mid_name,region) in cached_data and  region in ['jp', 'kr']:
+                                new_media_name = str(game_id)+'_'+m_type_mid_name+m_region_ext
+                                # print(new_media_name, game_id, m_type+f'({region})')
+                                m_type_f = m_type+f'({region})'
+                                if m_type == 'support-2D' and 'support' in media_data:
+                                    m_type_f = m_type_f+'[1]'
+
+                                pr_data_list.append((game_id, new_media_name, m_type_f))
+                                n += 1
+                            else:
+                                continue
+                        else:
+                            if region == None:
+                                m_type_f = m_type
+                            else:
+                                m_type_f = m_type+f'({region})'
+                            if m_type == 'support-2D' and 'support' in media_data:
+                                m_type_f = m_type_f+'[1]'
+
+                            new_media_name = str(game_id)+'_'+m_type_mid_name+m_region_ext
+                            pr_data_list.append((game_id, new_media_name, m_type_f))
+                            # print(new_media_name, m_type+f'({region})')
+                            n += 1
+
+        self.tot_search_num = len(set(pr_data_list))
+        th_list = []
+        for data in set(pr_data_list):
+            time.sleep(0.2)
+            self.get_num += 1
+            while True:
+                if self.stop_call_api:
+                    break
+
+                if len(self.run_bucket) <= 7:
+                    break
+
+            if self.stop_call_api:
+                break
+            # print(data)
+            self.run_bucket.add(data[1])        
+            self.api_call_num += 1
+            t1 = Thread(target=self.call_api_media_download, args=(data[0], data[1], data[2]))
+            t1.start()            
+            th_list.append(t1)
+            print(str(self.api_call_num), '/', self.tot_search_num, len(self.run_bucket))
+
+
+        for th in th_list:
+            th.join()
+
+
+                            
+
+    def call_api_media_download(self, game_id, out_file_name, call_media_type):
+
+        if self.stop_call_api:
+            self.run_bucket.remove(out_file_name)
+            return 0
+        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "ssid":"evegood", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "jeuid":game_id, "media":call_media_type}
+        try:
+            if 'video' in call_media_type:
+                base_url = self.base_video_url
+            elif 'manuel' in call_media_type:
+                base_url = self.base_manual_url
+            else:
+                base_url = self.base_media_url
+            # print(base_url, out_file_name, call_media_type)
+            resp = requests.get(base_url, params=param, stream = True)
+        except requests.exceptions.Timeout as e:
+            # print('Timeout Error : ',game_id)
+            self.run_bucket.remove(out_file_name)
+            return 0
+        if resp.status_code == 200  and not 'Erreur' in resp.text[:100] and not 'Error' in resp.text[:100] and not 'NOMEDIA' in resp.text[:100]:
+            with open(ROMS_CACHE_PATH+'\\'+str(self.sys_id)+'\\'+out_file_name, 'wb') as f: 
+                for chunk in resp.iter_content(chunk_size = 1024*1024): 
+                    if chunk: 
+                        f.write(chunk)         
+            self.run_bucket.remove(out_file_name)
+        
+        elif resp.status_code == 430 or resp.status_code == 431:
+            self.stop_call_api = True
+            self.run_bucket.remove(out_file_name)
+            print('Error : ', resp.text, '::',game_id)
+            return 0
+
+        else:
+            self.run_bucket.remove(out_file_name)
+            print('Error : ', resp.text, '::',game_id, call_media_type)
+            return 0
+
+
+
+
+
+        # urlStr = 'https://api.screenscraper.fr/api2/mediaJeu.php?devid=evegood&devpassword=yPoo9XlnDCG&softname=&ssid=evegood2&sspassword=1132dudwls&systemeid=1&jeuid=3&media=support-texture(wor)'
+
+        # # urlStr = 'https://api.screenscraper.fr/api2/mediaVideoJeu.php?devid=xxx&devpassword=yyy&softname=zzz&ssid=test&sspassword=test&crc=&md5=&sha1=&systemeid=29&jeuid=88766&media=video'
+
+        # r = requests.get(urlStr, stream = True) 
+        # print(r.status_code)
+        # print(r.text[:100])
+        # 'Problème de paramètres'
+        # if 'Erreur' in r.text[:100] or 'Error' in r.text[:100] or 'NOMEDIA' in r.text[:100] or r.status_code != 200:
+        #     print(r.text[:100])
+        # file_name = 'test.png'
+        # with open(file_name, 'wb') as f: 
+        #     for chunk in r.iter_content(chunk_size = 1024*1024): 
+        #         if chunk: 
+        #             f.write(chunk)         
+
+    # def getCachedMedia2(self):
+    #     roms_cache_path = ROMS_CACHE_PATH+'\\'+str(self.sys_id)
+    #     if os.path.exists(roms_cache_path):
+    #         pass
+    #     else:
+    #         os.makedirs(roms_cache_path)
+
+    #     regions = ['jp','kr','wor','us','eu']
+    #     media_type_set = {'sstitle':'titlescreens', 'ss':'screenshots', 'wheel':'wheel', 'wheel-hd':'wheel', 'box-2D':'cover', 'box-2D-side':'box2dside', 'box-texture':'boxtexture', 'box-3D':'box3d', 'video':'videos', 'manuel':'manuals', 'support-2D':'support'}
+    #     crc_meta = {}
+
+    #     json_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'json'
+    #     for file_name in set(os.listdir(json_path)):
+    #         with open(json_path+'\\'+file_name, encoding='utf-8') as fp:
+    #             result_data = json.load(fp)
+    #             game_id = result_data['response']['jeu']['id']
+    #             game_name_sample = result_data['response']['jeu']['noms'][0]['text']
+    #             for media_data in result_data['response']['jeu']['medias']:
+    #                 m_type = media_data['type']
+    #                 if m_type in media_type_set:
+    #                     # if not m_type in ['video','manuel']:
+    #                     #     m_region_ext = '_'+media_data['region']+'.png'
+    #                     if m_type == 'manuel':
+    #                         m_region_ext = '_'+media_data['region']+'.pdf'
+    #                     # else:
+    #                     #     continue
+    #                     elif m_type == 'video':
+    #                         m_region_ext = '.mp4'
+    #                     else:
+    #                         m_region_ext = '_'+media_data['region']+'.png'
+    #                     m_type_mid_name = media_type_set[m_type]
+    #                     m_crc = media_data['crc'].lower()
+    #                     new_media_name = str(game_id)+'_'+m_type_mid_name+m_region_ext
+    #                     crc_meta[m_crc] = new_media_name
+
+    #     for m_crc in crc_meta:
+    #         print(m_crc, crc_meta[m_crc])
+
+    #     cover_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'covers'
+    #     for file_name in set(os.listdir(cover_path)):
+    #         cover_file_path = cover_path+'\\'+file_name
+    #         crc_val = get_crc(cover_file_path).lower()
+    #         print(cover_file_path, crc_val)
+    #     #     if crc_val in crc_meta:
+    #     #         print(cover_file_path, crc_meta[crc_val])
+
+
+    def getCachedMedia(self):
+        roms_cache_path = ROMS_CACHE_PATH+'\\'+str(self.sys_id)
+        if os.path.exists(roms_cache_path):
+            pass
+        else:
+            os.makedirs(roms_cache_path)
+
+        regions = ['jp','kr','wor','us','eu']
+        media_type_set = {'sstitle':'titlescreens', 'ss':'screenshots', 'wheel':'wheel', 'wheel-hd':'wheel', 'box-2D':'cover', 'box-2D-side':'box2dside', 'box-texture':'boxtexture', 'box-3D':'box3d', 'video':'videos', 'manuel':'manuals', 'support-2D':'support'}
+        crc_meta = {}
+        md5_meta = {}
+        sha1_meta = {}
+        chched_path = r'E:\Emul\Skraper-1.1.1\Cache\\'+str(self.sys_id)
+        if os.path.exists(chched_path):
+            for file_name in os.listdir(chched_path):
+                if file_name[:9] != 'MEDIA.2..':
+                    continue
+                file_name = file_name.replace('MEDIA.2..','')
+                meta_data = file_name.split('.0.0.')
+                media_type = meta_data[0]
+                crc_data_list = meta_data[1].split('.')
+                crc = crc_data_list[0].lower()
+                md5 = crc_data_list[1].lower()
+                sha1 = crc_data_list[2].lower()
+                crc_meta[crc] = (media_type, 'MEDIA.2..'+file_name)
+                md5_meta[md5] = (media_type, 'MEDIA.2..'+file_name)
+                sha1_meta[sha1] = (media_type, 'MEDIA.2..'+file_name)
+
+
+            # print(crc, md5, sha1)
+
+        json_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'json'
+        for file_name in set(os.listdir(json_path)):
+            with open(json_path+'\\'+file_name, encoding='utf-8') as fp:
+                result_data = json.load(fp)
+                game_id = result_data['response']['jeu']['id']
+                game_name_sample = result_data['response']['jeu']['noms'][0]['text']
+                for media_data in result_data['response']['jeu']['medias']:
+                    m_type = media_data['type']
+                    if m_type in media_type_set:
+                        # if not m_type in ['video','manuel']:
+                        #     m_region_ext = '_'+media_data['region']+'.png'
+                        if m_type == 'manuel':
+                            m_region_ext = '_'+media_data['region']+'.pdf'
+                        # else:
+                        #     continue
+                        elif m_type == 'video':
+                            m_region_ext = '.mp4'
+                        else:
+                            m_region_ext = '_'+media_data['region']+'.png'
+                        m_type_mid_name = media_type_set[m_type]
+                        m_crc = media_data['crc']
+                        m_md5 = media_data['md5']
+                        m_sha1 = media_data['sha1']
+                        new_media_name = str(game_id)+'_'+m_type_mid_name+m_region_ext
+                        if m_crc in crc_meta:
+                            print(new_media_name)
+                            copyfile(chched_path+'\\'+crc_meta[m_crc][1],roms_cache_path+'\\'+new_media_name)
+
+    def exportGameNames(self):
+        output_xml_files_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'json'
+        read_set = set([])
+        if os.path.exists(output_xml_files_path):
+            for f_name in os.listdir(output_xml_files_path):
+                if os.path.exists(output_xml_files_path+'\\'+f_name):
+                    read_set.add(f_name[:-5])             
+            pass
+        else:
+            os.makedirs(output_xml_files_path)
+        
+
+        cur = self.con.cursor()
+        if self.system_name == 'mame':
+            self.system_name = 'fbneo'
+        tb_name = 'games_'+self.system_name
+
+        r = cur.execute(f"SELECT id FROM {tb_name}")
+        game_id_list = []
+        for line in r:
+            self.tot_search_num += 1
+            if line[0] in read_set:
+                continue
+            game_id_list.append(line[0])
+        
+        game_id_list = set(game_id_list)
+
+        self.tot_search_num -= len(read_set)
+
+        th_list  =[]
+        for game_id in game_id_list:
+            time.sleep(0.2)
+
+            while True:
+                if self.stop_call_api:
+                    break
+
+                if len(self.run_bucket) <= 10:
+                    break
+
+            if self.stop_call_api:
+                break
+
+
+
+            self.run_bucket.add(game_id)        
+            self.api_call_num += 1
+            t1 = Thread(target=self.call_api2, args=(game_id, output_xml_files_path))
+            t1.start()            
+            th_list.append(t1)
+    
+            print(str(self.api_call_num), '/', self.tot_search_num, len(self.run_bucket))
+            
+        for th in th_list:
+            th.join()
 
 
 
@@ -793,12 +1381,31 @@ def test2():
     
 
 def test():
-    system_name = 'famicom'
+    # s_list = ["3do", "3ds", "amiga", "atarijaguar", "atarist", "dos", "dreamcast", "famicom", "gameandwatch", "gamegear", "gb","gbc","gba","gc","mastersystem", "megacd", "megadrive", "msx", "n64", "nds", "pc98", "pcengine", "pcenginecd", "pcfx", "ps2", "psp", "psx", "saturn", "sega32x", "sfc", "wii", "wonderswancolor", "x68000"]
+    system_name = '3ds'
+    # for system_name in s_list[1:]:
     ss= SSRomsMeta(system_name)
+    # ss.makeDBTable("Battle Chess Enhanced")
+    # ss.addTentacleMetaAndFillName()
+    ss.getAddMedia()
+
+    # for system_name in s_list[2:]:
+        # 'mastersystem','megacd', 'megadrive','msx','n64']:
+        # ss= SSRomsMeta(system_name)
+        # ss.getCachedMedia()
+    # ss.exportGameNames()
     # ss.makeDBTable()
-    # ss.after_merge_ra_meta()
-    # ss.check_data()
-    ss.addTentacleMetaAndFillName()
+    # ss.addTentacleMetaAndFillName()
+    # ss.ra_meta_for_noname()
+
+    # s_list = [["3do", "3ds", "amiga", "atarijaguar", "atarist", "dos", "dreamcast", "famicom", "gameandwatch", "gamegear", "gb","gbc","gba","gc","mastersystem", "megacd", "megadrive", "msx", "n64", "nds", "pc98", "pcengine", "pcenginecd", "pcfx", "ps2", "psp", "psx", "saturn", "sega32x", "sfc", "wii", "wonderswancolor", "x68000"]]
+    # s_list = ["megadrive", "msx", "n64", "nds", "pc98", "pcengine", "pcenginecd", "pcfx", "ps2", "psp", "psx", "saturn", "sega32x", "sfc", "wii", "wonderswancolor", "x68000"]
+    # for system_name in s_list:
+    #     ss= SSRomsMeta(system_name)
+    #     # ss.makeDBTable()
+    #     # ss.after_merge_ra_meta()
+    #     # ss.check_data()
+    #     ss.addTentacleMetaAndFillName()
 
 
 if __name__ == "__main__":

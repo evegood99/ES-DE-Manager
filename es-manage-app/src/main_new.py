@@ -8,8 +8,17 @@ import zlib, hashlib
 from fastcrc import crc8, crc16, crc32, crc64
 import itertools
 import operator
+from collections import Counter
 
 DB_FILE_PATH = "./es-manage-app/src/games_meta.db"
+
+def most_frequent_element(lst):
+    # 리스트의 빈도수 계산
+    counter = Counter(lst)
+    # 가장 빈도수가 높은 요소와 그 빈도수 추출
+    most_common = counter.most_common(1)
+    # 가장 빈도수가 높은 요소를 반환
+    return most_common[0][0] if most_common else None
 
 def contains_digit(s):
     return bool(re.search(r'\s\d|\sII\s|\sIII\s|\sIV\s|\sV\s', s)) and not bool(re.search(r'[1]', s))
@@ -60,10 +69,10 @@ def trans_num(path):
         path = path.replace(' IV', ' 4')
 
     elif 'III' in path:
-        path = path.replace(' III', '3')
+        path = path.replace(' III', ' 3')
 
     elif 'II' in path:
-        path = path.replace(' II', '2')
+        path = path.replace(' II', ' 2')
 
     return path
 
@@ -128,15 +137,16 @@ def _normString(text):
 
 def normString(text):
     text = remove_extension(text)
+    text = text.replace('_',' - ')
     pattern1 = '(\([^)]+\)|(\[+[^)]+\]))'
     result = re.findall(pattern1, text)
     find_r_list = []
     for find_r in result:
         find_r_list.append(find_r[0].replace('(','').replace(')','').replace('[','').replace(']',''))
         text = text.replace(find_r[0],'')
-    n_text = space_number(text.strip())
+    n_text = text.strip()
     sub_string = subString(n_text)
-    src_string = sub_string[0]
+    src_string = space_number(sub_string[0])
     sub_list = sub_string[1]
 
     return src_string, sub_list, find_r_list
@@ -161,10 +171,10 @@ def removeBucket(t_str):
     return t_str.strip()
 
 def space_number(src):
-    pattern = '([가-힣a-zA-Z][0-9])'
-    result = re.findall(pattern, src)
-    for d in result:
-        src = src.replace(d, d[0]+' '+d[1])
+    # pattern = '([가-힣a-zA-Z][0-9])'
+    # result = re.findall(pattern, src)
+    # for d in result:
+    #     src = src.replace(d, d[0]+' '+d[1])
     return src
 
 # def mix_ratio(src, tgt):
@@ -232,12 +242,21 @@ def get_crc(file_path):
     return hex(crcvalue)[2:]
 
 
+class DownMedia:
+
+    def __init__(self, system_name):
+        self.system_name = system_name
+
+    # def 
+
 class MatchingRoms:
 
     def __init__(self, roms_path, system_name) -> None:
         self.translator = Translator()
         self.con = sqlite3.connect(DB_FILE_PATH)
         self.roms_path = roms_path
+        if system_name == 'mame':
+            system_name = 'fbneo'
         self.system_name = system_name
         self.fuzz_data = {}
         self.fuzz_data2 = {}
@@ -315,9 +334,41 @@ class MatchingRoms:
         else:
             roms_path = local_path
         if is_exclude_xml:
-            rm_extension = ('.txt', '.xml', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia')
+            rm_extension = ('.txt', '.xml', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia', '.doc', '.hwp', '.xls', 'html')
         else:
-            rm_extension = ('.txt', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia')
+            rm_extension = ('.txt', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia', 'html')
+
+        direct_file = {}
+        direct_file_list = []
+        in_folder_file = {}
+        for data_name in os.listdir(roms_path):
+            if os.path.isfile(roms_path+'\\'+data_name) and not data_name[-4:] in rm_extension:
+                file_name = data_name
+                direct_file.setdefault(remove_extension(file_name),[]).append(file_name)
+            elif os.path.isdir(roms_path+'\\'+data_name):
+                folder_name = data_name
+                for data_name_indir in os.listdir(roms_path+'\\'+data_name):
+                    if os.path.isfile(roms_path+'\\'+data_name+'\\'+data_name_indir) and not data_name_indir[-4:] in rm_extension:
+                        file_name = data_name_indir
+                        in_folder_file.setdefault(folder_name, []).append(file_name)
+            else:
+                continue
+
+
+        # for k in direct_file:
+        #     if len(direct_file[k]) == 0:
+
+
+    def read_local_files(self, local_path=None, is_exclude_xml = True):
+
+        if local_path == None:
+            roms_path = self.roms_path
+        else:
+            roms_path = local_path
+        if is_exclude_xml:
+            rm_extension = ('.txt', '.xml', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia', '.doc', '.hwp', '.xls', 'html')
+        else:
+            rm_extension = ('.txt', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia', 'html')
 
         for data_name in os.listdir(roms_path):
             if os.path.isfile(roms_path+'\\'+data_name) and not data_name[-4:] in rm_extension:
@@ -344,17 +395,22 @@ class MatchingRoms:
         for sub_title in sub_title_list:
             insert_q2 += f' and filename like "%{sub_title}%"'
 
-        insert_q3 = f'src_name like "{base_title}%"'
+        insert_q3 = f'src_name like "{base_title}%" or src_name like "%;;{base_title}%"'
         for sub_title in sub_title_list:
             insert_q3 += f' and src_name like "%{sub_title}%"'
 
+        insert_q4 = f'filename_kor like "{base_title}%"'
+        for sub_title in sub_title_list:
+            insert_q4 += f' and src_name like "%{sub_title}%"'
 
-        insert_sql = f"SELECT * FROM {tb_name} WHERE ({insert_q1}) or ({insert_q2}) or ({insert_q3})"
+
+        insert_sql = f"SELECT * FROM {tb_name} WHERE ({insert_q1}) or ({insert_q2}) or ({insert_q3}) or ({insert_q4})"
         # print(insert_sql)
         r = cur.execute(insert_sql)
         data_list = []
         selected_game_roms_info = {}
         for line in r:
+            # print(line)
             game_id = line[8]
             selected_game_roms_info.setdefault(game_id,[]).append(line)
 
@@ -391,11 +447,13 @@ class MatchingRoms:
         insert_q1 = f'game_name like "%{base_title_token_list[0]}%"'
         insert_q2 = f'filename like "%{base_title_token_list[0]}%"'
         insert_q3 = f'src_name like "%{base_title_token_list[0]}%"'       
+        insert_q4 = f'filename_kor like "%{base_title_token_list[0]}%"'       
 
         if len(base_title_token_list[0]) <= 3:
             insert_q1 = f'game_name like "{base_title_token_list[0]}%"'
             insert_q2 = f'filename like "{base_title_token_list[0]}%"'
             insert_q3 = f'src_name like "{base_title_token_list[0]}%"'
+            insert_q4 = f'filename_kor like "{base_title_token_list[0]}%"'
 
         for base_title_token in base_title_token_list[1:]:
             insert_q1 += f' and game_name like "%{base_title_token}%"'
@@ -412,8 +470,12 @@ class MatchingRoms:
         for sub_title in sub_title_list:
             insert_q3 += f' and src_name like "%{sub_title}%"'
 
+        for base_title_token in base_title_token_list[1:]:
+            insert_q4 += f' and filename_kor like "%{base_title_token}%"'
+        for sub_title in sub_title_list:
+            insert_q4 += f' and filename_kor like "%{sub_title}%"'
 
-        insert_sql = f"SELECT * FROM {tb_name} WHERE ({insert_q1}) or ({insert_q2}) or ({insert_q3})"
+        insert_sql = f"SELECT * FROM {tb_name} WHERE ({insert_q1}) or ({insert_q2}) or ({insert_q3}) or ({insert_q4})"
         # print(insert_sql)
         r = cur.execute(insert_sql)
         selected_game_roms_info = {}
@@ -472,7 +534,6 @@ class MatchingRoms:
             fuzz_data = self.fuzz_data
 
         cr_val = 60
-        print('!!!!!!!! :',r[1])
         if system_name in ['dos']:
             cr_val = 90
         if r[1] >= cr_val:
@@ -539,19 +600,61 @@ class MatchingRoms:
         base_title = base_title.replace(' ','')
 
         new_selected_game_roms_info = {}
-
         recomm_list = {}
         for game_id in selected_game_roms_info:
             game_info = selected_game_roms_info[game_id][0]
             game_name = game_info[9]
             recomm_list[game_name] = game_id
-        
+            recomm_list[game_info[2]] = game_id
+        if len(recomm_list) == 0:
+            return selected_game_roms_info
         r = mix_ratio(base_title, recomm_list.keys())
         selected_game_id = recomm_list[r[0]]
         new_selected_game_roms_info[selected_game_id] = selected_game_roms_info[selected_game_id]
         return new_selected_game_roms_info
 
-    def run(self, test=None, other_path=False, is_print_all=True, is_result_roms=False): # test는 그냥 경로가 아닌 이름만 써서 테스트 할 경우, other_path는 xml파일 제외 여부정도,
+    def getFinalRoms(self, o_file_name, selected_game_roms_info): #가장 최종적인 rom 파일을 찾는다.
+        input_file_name = remove_extension(o_file_name)
+        recomm_data = {}
+        rom_to_game = {}
+        rom_to_data = {}
+        for game_id in selected_game_roms_info:
+            rom_data_list = selected_game_roms_info[game_id]
+            for rom_data in rom_data_list:
+                if rom_data[12] == 1:
+                    continue
+                rom_id = rom_data[0]
+                rom_to_game[rom_id] = game_id
+                rom_name = remove_extension(rom_data[2])
+                src_name_list_str = rom_data[1]
+                rom_name_kor = rom_data[3]
+                rom_to_data[rom_id] = (src_name_list_str, rom_name_kor)
+                recomm_data.setdefault(rom_name,set([])).add(rom_id)
+        
+        if len(recomm_data) == 0:
+            return None  
+        r = mix_ratio(input_file_name, recomm_data.keys())
+        sel_rom_id_set = recomm_data[r[0]]
+        
+        e_name_list = []
+        k_name_list = []
+        for sel_rom_id in sel_rom_id_set:
+            (src_name_list_str, rom_name_kor) = rom_to_data[sel_rom_id]
+            if ';;' in src_name_list_str:
+                src_name = removeBucket(src_name_list_str.split(';;')[0])
+            else:
+                src_name = src_name_list_str
+            e_name_list.append((src_name, sel_rom_id))
+            k_name_list.append((rom_name_kor, sel_rom_id))
+
+        e_name_t = most_frequent_element(e_name_list)
+        k_name_t = most_frequent_element(k_name_list)
+        e_name = e_name_t[0]
+        k_name = k_name_t[0]
+        game_id = e_name_t[1]
+        return (e_name, k_name, game_id)
+ 
+    def run(self, test=None, other_path=False): # test는 그냥 경로가 아닌 이름만 써서 테스트 할 경우, other_path는 xml파일 제외 여부정도,
         no_search = False
         if test != None:
             iterator = self.local_name(test)
@@ -562,65 +665,72 @@ class MatchingRoms:
                 iterator = self.read_local_files()
 
 
+
         for o_file_name in iterator:
             selected_game_roms_info = self.check_file_hash(o_file_name)
             if len(selected_game_roms_info) != 0:
-                game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                if is_print_all:
-                    print(o_file_name,'||', rom_name_list, 'hash')
+                # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
+                yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'1')
+                # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                 continue
 
             base_title, sub_title_list, bucket_str_list = normString(o_file_name)
             selected_game_roms_info, insert_sql = self.searchDB(self.system_name, base_title, sub_title_list)
-            # print(insert_sql)            
+            # print('pass 1')    
+            # print(len(selected_game_roms_info))        
             if len(selected_game_roms_info) == 0: # 쿼리 후보 대상이 하나도 없다면.. 
                 ori_base_title = base_title
                 base_title = trans_num(remove_one(base_title)) # base_title의 문자를 약간 조작 (숫자 변경 등)
                 selected_game_roms_info, insert_sql = self.searchDB(self.system_name, base_title, sub_title_list)
-
+                # print('pass 2') 
                 if len(selected_game_roms_info) == 0: # 이 file은 쿼리 로 후보 자체를 찾을 수 없음.. (계속)
                     base_title = ori_base_title
                     selected_game_roms_info, add_bucket_str_list, insert_sql = self.searchDB2(self.system_name, base_title, sub_title_list)
                     bucket_str_list = list(set(bucket_str_list + add_bucket_str_list))
-
+                    # print('pass 3') 
                     if len(selected_game_roms_info) == 0: #이 file은 쿼리 로 후보 자체를 찾을 수 없음.. (계속)
                         # print(insert_sql)
                         base_title = trans_num(remove_one(base_title))
                         selected_game_roms_info, add_bucket_str_list, insert_sql = self.searchDB2(self.system_name, base_title, sub_title_list)
-
+                        # print('pass 4') 
                         if len(selected_game_roms_info) == 0: #이 file은 쿼리 로 후보 자체를 찾을 수 없음.. (계속)
                             base_title = ori_base_title
                             selected_game_roms_info, insert_sql = self.searchDB3(self.system_name, base_title)
                             # print(insert_sql)
-
+                            # print('pass 5') 
                             if len(selected_game_roms_info) == 0: #이 file은 쿼리 로 후보 자체를 찾을 수 없음.. (계속)
                                 selected_game_roms_info = self.check_file_hash(o_file_name, is_force_check=True)
                                 if len(selected_game_roms_info) != 0:
-                                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                                    if is_print_all:
-                                        print(o_file_name,'||', rom_name_list, 'hash')
+                                    # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
+                                    yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'2')
+                                    # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
+                                    continue
                                 else:
                                     selected_game_roms_info = self.searchDB4(self.system_name, base_title, sub_title_list)
                                     if len(selected_game_roms_info) == 0:
-                                        print(o_file_name, 'NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOON')
+                                        # print(o_file_name, 'NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOON')
                                         no_search = True
-                                        # return base_title                          
+                                        yield (o_file_name, (None, None, None))
+                                        # result_list.append((o_file_name, (None, None, None)))
                                         continue
                                         
 
             if len(selected_game_roms_info) == 1: # 쿼리 후보 대상이 1개라면 해당 game 선택 (끝)
-                selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)                
-                game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                if is_print_all:
-                    print(o_file_name,'||',rom_name_list, '1')
+                selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)    
+                selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
+                selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
+                # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
+                yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'3')
+                # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
+                continue
 
             else: # 쿼리 후보 대상이 2개 이상이라면
-                if base_title in selected_game_roms_info: #기본 제목이 game_name 목록과 완전 동일 이라면 해당 게임 선택 (끝)
-                    selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
-                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                    if is_print_all:
-                        print(o_file_name,'||',rom_name_list, '11')
-                    continue
+                # if base_title in selected_game_roms_info: #기본 제목이 game_name 목록과 완전 동일 이라면 해당 게임 선택 (끝)
+                #     selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
+                #     # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
+                #     yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info))
+                #     # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
+                #     # continue
 
 
                 if not contains_digit(base_title):  #기본 제목에 숫자가 없는 title 이라면 (쿼리 후보에 숫자가 있는 것도 같이 뽑히겠지)
@@ -632,32 +742,35 @@ class MatchingRoms:
                             game_name = game_info[9]
                             if contains_digit(game_name): # 숫자가 있는 game_name은 제외
                                 removed_game_id_list.add(game_id)
-
+                    
                     if len(selected_game_roms_info) > len(removed_game_id_list):
                         for game_id in removed_game_id_list: #후보 game_name 목록 중에서
                                 selected_game_roms_info.pop(game_id)
 
                     if len(selected_game_roms_info) == 1: #위에 제외 후 1개만 남았다면 그녁석을 선택 (끝)
                         selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
-                        game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                        if is_print_all:
-                            print(o_file_name,'||',rom_name_list, '4')
+                        # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
+                        yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'4')
+                        # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
+                        continue
 
                     else: # 위에 제외 후에도 2개 이상이라면 일단 2개 이상 이면 후보 중 가장 src_name 과 유사한 걸로 뽑음 (끝)
                         selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
                         selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
-                        game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                        if is_print_all:
-                            print(o_file_name,'||',rom_name_list, '5')
+                        # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
+                        yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'5')
+                        # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
+                        continue
 
                 else: # 기본 제목에 숫자가 있는 타이틀 이라면.(숫자도 반드시 반영 되었겠지).. 이경우는 현재 2개 이상으로 냅둠 (계속)
                     selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
                     selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
-                    game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                    if is_print_all:
-                        print(o_file_name,'||',rom_name_list, '2')
+                    # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
+                    yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'6')
+                    # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
+                    continue
 
-        return no_search, base_title
+        # return result_list
 
 
 
@@ -742,15 +855,18 @@ def test_nlp():
         print(o_file_name, t_list, bucket_str_list)
 
 def test():
-    rom_path = r'G:\ROMs\ps2'
+    rom_path = r'G:\ROMs\dos'
+    # rom_path = r'G:\Roms\psx\70s Robot Anime Geppy-X'
     # rom_path = r'E:\Emul\Full_Roms_assets\ps2\textual'
-    system_name = 'ps2'
+    system_name = 'dos'
     mr = MatchingRoms(rom_path, system_name)
     # r = mr.get_roms_info(1025140)
     # print(r)
     # for line in mr.choice_list:
     #     print(line)
-    mr.run(other_path=False)
+    r = mr.run(other_path=False)
+    for i in r:
+        print(i)
 
 if __name__ == "__main__":
-    test4()
+    test()

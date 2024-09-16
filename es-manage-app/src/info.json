@@ -12,13 +12,22 @@
             "name": "Atari - Jaguar",
             "name_esde": "atarijaguar",
             "name_scrapper": "Jaguar",
-            "scrapper_system_id":27
+            "scrapper_system_id":27,
+            "extensions":[
+                ".abs", ".ABS", ".bin", ".BIN", ".cdi", ".CDI", ".cof", ".COF", 
+                ".cue", ".CUE", ".j64", ".J64", ".jag", ".JAG", ".prg", ".PRG", 
+                ".rom", ".ROM", ".7z", ".7Z", ".zip", ".ZIP"
+            ]
         },
         {
             "name": "Atari - ST",
             "name_esde": "atarist",
             "name_scrapper": "Atari ST",
-            "scrapper_system_id":42
+            "scrapper_system_id":42,
+            "extensions":[
+                ".st", ".ST", ".msa", ".MSA", ".stx", ".STX", ".dim", ".DIM", 
+                ".ipf", ".IPF", ".m3u", ".M3U", ".7z", ".7Z", ".zip", ".ZIP"
+            ]
         },
         {
             "name": "Bandai - WonderSwan Color",
@@ -30,13 +39,19 @@
             "name": "Commodore - Amiga",
             "name_esde": "amiga",
             "name_scrapper": "Amiga",
-            "scrapper_system_id":64
+            "scrapper_system_id":64,
+            "extensions" : [".adf", ".ADF", ".adz", ".ADZ", ".ccd", ".CCD", ".chd", ".CHD", ".cue", ".CUE", ".dms", ".DMS", ".fdi", ".FDI", ".hdf", ".HDF", ".hdz", ".HDZ", ".ipf", ".IPF", ".iso", ".ISO", ".lha", ".LHA", ".m3u", ".M3U", ".mds", ".MDS", ".nrg", ".NRG", ".rp9", ".RP9", ".uae", ".UAE", ".7z", ".7Z", ".zip", ".ZIP"]
         },
         {
             "name": "DOS",
             "name_esde": "dos",
             "name_scrapper": "PC Dos",
-            "scrapper_system_id":135
+            "scrapper_system_id":135,
+            "extensions":[
+                ".bat", ".BAT", ".com", ".COM", ".conf", ".CONF", ".cue", ".CUE", 
+                ".dosz", ".DOSZ", ".exe", ".EXE", ".iso", ".ISO", ".7z", ".7Z", 
+                ".zip", ".ZIP"
+            ]
         },
         {
             "name": "FBNeo - Arcade Games",
@@ -107,7 +122,7 @@
         {
             "name": "Nintendo - GameCube",
             "name_esde": "gc",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "GameCube",
             "scrapper_system_id":13
         },
         {
@@ -125,7 +140,7 @@
         {
             "name": "Nintendo - Nintendo Entertainment System",
             "name_esde": "famicom",
-            "name_scrapper": "Jaguar",
+            "name_scrapper": "Famicom",
             "scrapper_system_id":3
         },
         {
@@ -210,10 +225,11 @@
             "name": "The 3DO Company - 3DO",
             "name_esde": "3do",
             "name_scrapper": "3DO",
-            "scrapper_system_id":29
+            "scrapper_system_id":29,
+            "extensions" : [".bin", ".BIN", ".chd", ".CHD", ".cue", ".CUE", ".iso", ".ISO", ".7z", ".7Z", ".zip", ".ZIP"]
         },
         {
-            "name": "Nintendo - 3DS",
+            "name": "Nintendo - Nintendo 3DS",
             "name_esde": "3ds",
             "name_scrapper": "3DS",
             "scrapper_system_id":17
@@ -229,6 +245,18 @@
             "name_esde": "wonderswan",
             "name_scrapper": "WonderSwan",
             "scrapper_system_id":45
+        },
+        {
+            "name": "Nintendo - Switch",
+            "name_esde": "switch",
+            "name_scrapper": "Switch",
+            "scrapper_system_id":225
+        },
+        {
+            "name": "ScummVM",
+            "name_esde": "scummvm",
+            "name_scrapper": "Scummvm",
+            "scrapper_system_id":225
         }
 
 

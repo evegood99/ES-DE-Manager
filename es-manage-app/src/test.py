@@ -44,10 +44,10 @@ debug_password = 'sO8noULh3Dy'
 
 # urlStr = 'https://screenscraper.fr/api2/jeuInfos.php?devid=evegood&devpassword=yPoo9XlnDCG&ssid=evegood&sspassword=1132dudwls&output=json&romtype=rom&romnom=valis 1'
 
-urlStr = 'https://www.screenscraper.fr/api2/systemesListe.php?devid=evegood&devpassword=yPoo9XlnDCG&ssid=evegood&sspassword=1132dudwls&output=json'
+# urlStr = 'https://www.screenscraper.fr/api2/systemesListe.php?devid=evegood&devpassword=yPoo9XlnDCG&ssid=evegood&sspassword=1132dudwls&output=json'
 # 
-r = requests.get(urlStr)
-print(r.text)
+# r = requests.get(urlStr)
+# print(r.text)
 # x = json.loads(r.text)
 # for i in x['response']['systemes']:
 #     try:
@@ -61,12 +61,22 @@ print(r.text)
 
 # r = requests.get()
 
+region = ['jp' ,'kr', 'asi', 'wor', 'us', 'eu']
+media = ['sstitle', 'ss', ('wheel', 'wheel-hd'), ]
 
-# urlStr = 'https://main.screenscraper.fr/api2/mediaVideoJeu.php?devid=evegood&devpassword=yPoo9XlnDCG&softname=&ssid=evegood&sspassword=1132dudwls&systemeid=135&jeuid=152356&media=video'
+urlStr = 'https://api.screenscraper.fr/api2/mediaVideoJeu.php?devid=evegood&devpassword=yPoo9XlnDCG&softname=&ssid=evegood2&sspassword=1132dudwls&systemeid=29&jeuid=1235&media=video'
+urlStr = 'https://api.screenscraper.fr/api2/mediaJeu.php?devid=evegood&devpassword=yPoo9XlnDCG&softname=&ssid=evegood2&sspassword=1132dudwls&systemeid=1&jeuid=3&media=support-texture(wor)'
 
-# r = requests.get(urlStr, stream = True) 
-# file_name = 'test.mp4'
-# with open(file_name, 'wb') as f: 
-#     for chunk in r.iter_content(chunk_size = 1024*1024): 
-#         if chunk: 
-#             f.write(chunk) 
+# urlStr = 'https://api.screenscraper.fr/api2/mediaVideoJeu.php?devid=xxx&devpassword=yyy&softname=zzz&ssid=test&sspassword=test&crc=&md5=&sha1=&systemeid=29&jeuid=88766&media=video'
+
+r = requests.get(urlStr, stream = True) 
+print(r.status_code)
+print(r.text[:100])
+'Problème de paramètres'
+if 'Erreur' in r.text[:100] or 'Error' in r.text[:100] or 'NOMEDIA' in r.text[:100] or r.status_code != 200:
+    print(r.text[:100])
+file_name = 'test.png'
+with open(file_name, 'wb') as f: 
+    for chunk in r.iter_content(chunk_size = 1024*1024): 
+        if chunk: 
+            f.write(chunk) 
