@@ -34,8 +34,8 @@ LINUX = (platform.system() == "Linux")
 MAC = (platform.system() == "Darwin")
 
 # Configuration
-WIDTH = 1280
-HEIGHT = 760
+WIDTH = 2180
+HEIGHT = 1080
 
 OPTION_LINENUM = 2000
 LIST_CTRL = None
@@ -386,7 +386,20 @@ class MainPanel2(wx.Panel):
 
         self.selectedItemList = []
 
-        self.list_ctrl = wx.Panel()
+        self.list_ctrl = wx.ListCtrl(self.leftPanel, size=(-1, 100),
+                                     style=wx.LC_REPORT
+                                           | wx.BORDER_SUNKEN
+                                     )
+        size1 = 120
+        size2 = 120
+        self.list_ctrl.InsertColumn(0, 'NO.', width=60, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(1, 'FILE', width=240, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(2, 'NAME (ENG)', width=300, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(4, 'NAME (KOR)', width=300, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.itemDoubleClick)
+        self.list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.itemSelection)
+        self.list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.itemDeSelection)
+
         twitterDataBox_sizer.Add(self.list_ctrl, 1, wx.EXPAND)
         #         self.leftPanel.Bind(wx.EVT_LIST_ITEM_SELECTED, self.OnSelectMustHave, self.list_ctrl)
 
@@ -404,63 +417,22 @@ class MainPanel2(wx.Panel):
         #######################
 
         splitter.SplitVertically(self.leftPanel, self.rightPanel)
-        size = (420, 100)
-        splitter.SetMinimumPaneSize(size[0])
+        splitter.SetMinimumPaneSize(900)
         mainSizer.Add(splitter, 1, wx.EXPAND)
 
         self.SetSizer(mainSizer)
 
-        self.nullPanel = NullDataPanel(self)
-        self.notebook.AddPage(self.nullPanel, "Data", True)
+        self.nullPanel1 = NullDataPanel(self)
+        self.nullPanel2 = NullDataPanel(self)
+        self.nullPanel3 = NullDataPanel(self)
+        self.nullPanel4 = NullDataPanel(self)
+
+        self.notebook.AddPage(self.nullPanel1, "INFO", True)
+        self.notebook.AddPage(self.nullPanel2, "SCREEN")
+        self.notebook.AddPage(self.nullPanel3, "BOX-ART")
+        self.notebook.AddPage(self.nullPanel4, "VIDEO")
+
         self.notebook.SetSelection(0)    
-    def openDataCollectorBox(self, event):
-
-        self.notebook.SetSelection(0)
-
-    def openFileSaveBox(self, event):
-        with wx.FileDialog(self, "Save NME News Data file", wildcard="NME News Data files (*.nmen)|*.nmen",
-                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
-
-            if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return  # the user changed their mind
-
-            # save the current contents in the file
-            pathname = fileDialog.GetPath()
-            try:
-                dlg = wx.ProgressDialog("Save Data",
-                                        "Save Data...",
-                                        maximum=100,
-                                        parent=self,
-                                        style=wx.PD_APP_MODAL
-
-                                              | wx.PD_ELAPSED_TIME
-                                              | wx.PD_AUTO_HIDE
-                                        # | wx.PD_ESTIMATED_TIME
-                                        #                                 | wx.PD_REMAINING_TIME
-                                        )
-
-                dlg.Pulse("Save Data... ")
-                try:
-                    pass
-                except:
-                    pass
-                shutil.copy2(TEMP_PATH, pathname)
-                dlg.Update(100, "End")
-                dlg.Destroy()
-            except IOError:
-                wx.LogError("Cannot save current data in file '%s'." % pathname)
-
-    def openFileLoadBox(self, event):
-        global NMDB
-        global DATA_LIST
-        with wx.FileDialog(self, "Open NME News Data file", wildcard="NME News Data files (*.nmen)|*.nmen",
-                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as fileDialog:
-
-            if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return  # the user changed their mind
-
-            # Proceed loading the file chosen by the user
-
     def itemDoubleClick(self, event):
 
         index = event.GetIndex()
@@ -540,53 +512,6 @@ class MainPanel2(wx.Panel):
         mgDlg = MergeDialog(self.list_ctrl, tmpList)
         mgDlg.ShowModal()
 
-    def runNLP(self, event):
-        tmpList = list(self.selectedItemList)
-        if len(tmpList) == 0:
-            dial = wx.MessageDialog(None, 'Select at least one more items.', 'Item Selection', wx.OK | wx.ICON_ERROR)
-            dial.ShowModal()
-            return 0
-
-    def insertItemToNetMiner(self, event):
-        tmpList = list(self.selectedItemList)
-        if len(tmpList) == 0:
-            dial = wx.MessageDialog(None, 'Select at least one more items.', 'Item Selection', wx.OK | wx.ICON_ERROR)
-            dial.ShowModal()
-            return 0
-
-        for index in tmpList:
-            (tableName, queryStr, newsNum, isNLP) = DATA_LIST[index]
-            if isNLP == 0:
-                dial = wx.MessageDialog(None, 'You must preprocess this item [' + str(
-                    index + 1) + " : " + queryStr + "(" + str(newsNum) + ")]", 'Preprocessing', wx.OK | wx.ICON_ERROR)
-                dial.ShowModal()
-                return 0
-
-        dlg = wx.ProgressDialog("processing",
-                                "preparing...",
-                                maximum=100,
-                                parent=self,
-                                style=wx.PD_APP_MODAL
-                                      | wx.PD_ELAPSED_TIME
-                                      | wx.PD_AUTO_HIDE
-                                # | wx.PD_ESTIMATED_TIME
-                                #                                 | wx.PD_REMAINING_TIME
-                                )
-
-        insertNM = InsertDataToNetMiner(DATA_LIST, tmpList, dlg, NMDB)
-        insertNM.run()
-        #         workThread = threading.Thread(target=insertNM.run)
-        #         workThread.start()
-        #         threads.append(workThread)
-        #         for t in threads:
-        #             t.join()
-        dlg.Update(100, "End")
-        dlg.Destroy()
-        dlg.Close()
-
-        #         insertNM = InsertNetMiner.InsertTwitterDataToNetMiner(self.DataList, tmpList, dlg)
-        #         insertNM.run()
-        wx.MessageBox('Process is completed', 'Info', wx.OK | wx.ICON_INFORMATION)
 class MainPanel(wx.Panel):
     """Constructor"""
 
@@ -605,9 +530,10 @@ class MainPanel(wx.Panel):
                                      )
         size1 = 120
         size2 = 120
-        self.list_ctrl.InsertColumn(0, 'Name', width=size1, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(1, 'Name(Kor)', width=size2, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(2, 'Files', width=size1, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(0, 'NAME', width=size1, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(1, 'SYSTEM', width=size2, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(2, 'PLATFORM', width=size1, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(4, '# OF GAMES', width=size1, format=wx.LIST_FORMAT_CENTER)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.itemDoubleClick)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.itemSelection)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.itemDeSelection)
@@ -627,23 +553,21 @@ class MainPanel(wx.Panel):
 
         btnSizer2 = wx.BoxSizer(wx.HORIZONTAL)
 
-        btn0 = wx.Button(self.leftPanel, label="Rename", size=(59, 28))
+        btn0 = wx.Button(self.leftPanel, label="Add game", size=(110, 35))
         btn0.Bind(wx.EVT_BUTTON, self.renameItem)
-        btn1 = wx.Button(self.leftPanel, label="Merge", size=(59, 28))
+        btn1 = wx.Button(self.leftPanel, label="Re-Scan", size=(110, 35))
         btn1.Bind(wx.EVT_BUTTON, self.mergeItem)
-        btn2 = wx.Button(self.leftPanel, label="Delete", size=(59, 28))
+        btn2 = wx.Button(self.leftPanel, label="Delete", size=(110, 35))
         btn2.Bind(wx.EVT_BUTTON, self.deleteItem)
-        btn3 = wx.Button(self.leftPanel, label="Preprocess", size=(79, 28))
-        btn3.Bind(wx.EVT_BUTTON, self.runNLP)
-        btn4 = wx.Button(self.leftPanel, label="Import Into NetMiner", size=(129, 28))
+        btn4 = wx.Button(self.leftPanel, label="Make Game List", size=(160, 35))
         btn4.Bind(wx.EVT_BUTTON, self.insertItemToNetMiner)
         btnSizer2.Add(btn1)
         btnSizer2.Add(btn0)
         btnSizer2.Add(btn2)
         btnSizer2.Add((10, 10), 1, wx.EXPAND)
-        btnSizer2.Add(btn3)
         btnSizer2.Add(btn4)
         twitterDataBox_sizer.Add(btnSizer2)
+        # twitterDataBox_sizer.Add(btn4)
 
         self.leftPanel.SetSizer(twitterDataBox_sizer)
         #####################
@@ -659,8 +583,7 @@ class MainPanel(wx.Panel):
         # #######################
 
         splitter.SplitVertically(self.leftPanel, self.rightPanel)
-        size = (420, 100)
-        splitter.SetMinimumPaneSize(size[0])
+        splitter.SetMinimumPaneSize(520)
         mainSizer.Add(splitter, 1, wx.EXPAND)
 
         self.SetSizer(mainSizer)
