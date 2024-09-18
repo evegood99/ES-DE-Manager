@@ -1120,7 +1120,7 @@ class SSRomsMeta:
         if self.stop_call_api:
             self.run_bucket.remove(out_file_name)
             return 0
-        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "ssid":"evegood", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "jeuid":game_id, "media":call_media_type}
+        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "ssid":"evegood2", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "jeuid":game_id, "media":call_media_type}
         try:
             if 'video' in call_media_type:
                 base_url = self.base_video_url
@@ -1382,7 +1382,7 @@ def test2():
 
 def test():
     # s_list = ["3do", "3ds", "amiga", "atarijaguar", "atarist", "dos", "dreamcast", "famicom", "gameandwatch", "gamegear", "gb","gbc","gba","gc","mastersystem", "megacd", "megadrive", "msx", "n64", "nds", "pc98", "pcengine", "pcenginecd", "pcfx", "ps2", "psp", "psx", "saturn", "sega32x", "sfc", "wii", "wonderswancolor", "x68000"]
-    system_name = '3ds'
+    system_name = 'gamegear'
     # for system_name in s_list[1:]:
     ss= SSRomsMeta(system_name)
     # ss.makeDBTable("Battle Chess Enhanced")
