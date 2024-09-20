@@ -22,7 +22,8 @@ import wx.grid as gridlib
 # import cPickle 
 import copy
 import chardet
-
+import wx.lib.sized_controls as sc
+from wx.lib.pdfviewer import pdfViewer, pdfButtonPanel
 # import selenium.webdriver as webdriver
 # import urllib2, StringIO
 
@@ -34,8 +35,8 @@ LINUX = (platform.system() == "Linux")
 MAC = (platform.system() == "Darwin")
 
 # Configuration
-WIDTH = 2180
-HEIGHT = 1080
+WIDTH = 2160
+HEIGHT = 1200
 
 OPTION_LINENUM = 2000
 LIST_CTRL = None
@@ -67,7 +68,7 @@ def getPresentTime():
     return time.strftime(timeForm, localTime)
 
 
-class DataFilteringBox(wx.Frame):
+class AddSystem(wx.Frame):
     def __init__(self, parent, id, title, targerField, tableName):
         ID_NEW = 1
         ID_ADDFILE = 2
@@ -165,92 +166,7 @@ class DataFilteringBox(wx.Frame):
             self.listbox.Append(text)
         #             OPT.multiPayProcess_timeSetting.append(text)
 
-    def addFile(self, event):
-        with wx.FileDialog(self, "Open Filtering words file", wildcard="csv files (*.csv)|*.csv",
-                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as fileDialog:
 
-            if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return  # the user changed their mind
-
-            # Proceed loading the file chosen by the user
-            pathname = fileDialog.GetPath()
-
-            if pathlib.Path(pathname).is_file():
-                import csv
-                #                 dlg = wx.ProgressDialog("Load Data",
-                #                                        "Reading Data...",
-                #                                        maximum = 100,
-                #                                        parent=self,
-                #                                        style = wx.PD_APP_MODAL
-                #
-                #
-                #                                         | wx.PD_ELAPSED_TIME
-                #                                         | wx.PD_AUTO_HIDE
-                #                                         #| wx.PD_ESTIMATED_TIME
-                #         #                                 | wx.PD_REMAINING_TIME
-                #                                         )
-                #                 dlg.Pulse("Reading Data...")
-
-                fp = open(pathname, 'rb')
-                testRead = None
-                line_n = 0
-                for line in fp:
-                    if testRead == None:
-                        testRead = line
-                    else:
-                        testRead += line
-                    line_n += 1
-                    if line_n >= 10:
-                        break
-                chatDetResult = chardet.detect(testRead)
-                fp.close()
-                encodingResult = chatDetResult['encoding']
-                if not encodingResult in ['utf-8', 'EUC-KR', 'cp949', 'ms949']:
-                    encodingResult = 'utf-8'
-                try:
-                    fOpen = open(pathname, encoding=encodingResult)
-                except:
-                    encodingResult = 'ms949'
-                    fOpen = open(pathname, encoding=encodingResult)
-                #                 fOpen = open(pathname, encoding="utf-8")
-                try:
-                    print(fOpen.readline())
-                    fOpen.seek(0)
-                    fp = csv.reader(fOpen)
-                except:
-                    encodingResult = 'ms949'
-                    fOpen = open(pathname, encoding=encodingResult)
-                    fp = csv.reader(fOpen)
-                tmpSet = set([])
-                prList = self.listbox.GetItems()
-                setPrList = set(prList)
-                for line in fp:
-                    for word in line:
-                        if word == "" or word == " " or word == "\n" or word in setPrList:
-                            continue
-                        word = word.strip()
-                        tmpSet.add(word)
-
-                self.listbox.AppendItems(list(tmpSet))
-
-    #                 dlg.Update(100, "End")
-    #                 dlg.Destroy()
-
-    def OnDelete(self, event):
-        sel = self.listbox.GetSelections()
-        if len(sel) != 0:
-            sel.sort(reverse=True)
-            for index in sel:
-                self.listbox.Delete(index)
-
-    #             self.tmp_multiPayProcess_timeSetting.pop(sel)
-    #             OPT.multiPayProcess_timeSetting.pop(sel)
-
-    def OnClear(self, event):
-        self.listbox.Clear()
-
-    #         self.tmp_multiPayProcess_timeSetting = []
-    #         OPT.multiPayProcess_timeSetting = []
 
     def set_ok(self, event):
 
@@ -343,7 +259,9 @@ class GetButtonToolbar(wx.Panel):
         reSizeBitmap = (W - 460, H - 460)
         image = image.Scale(reSizeBitmap[0], reSizeBitmap[1], wx.IMAGE_QUALITY_HIGH)
         bitmap = wx.Bitmap(image)
-        self.getData_btn = wx.BitmapButton(self, size=btn_size, bitmap=bitmap)
+        self.getData_btn = wx.Button(self, label="Add System", size=(110, 55))
+
+        # self.getData_btn = wx.BitmapButton(self, size=btn_size, bitmap=bitmap)
         tb_sizer.Add(self.getData_btn, 0, wx.ALL, 5)
 
         bitmap = imageIco.load.GetBitmap()
@@ -385,26 +303,8 @@ class MainPanel2(wx.Panel):
         twitterDataBox_sizer = wx.StaticBoxSizer(twitterDataBox, orient=wx.VERTICAL)
 
         self.selectedItemList = []
+        self.leftPanel = GridPanelGames(splitter, None, 'aaa', 10, None)
 
-        self.list_ctrl = wx.ListCtrl(self.leftPanel, size=(-1, 100),
-                                     style=wx.LC_REPORT
-                                           | wx.BORDER_SUNKEN
-                                     )
-        size1 = 120
-        size2 = 120
-        self.list_ctrl.InsertColumn(0, 'NO.', width=60, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(1, 'FILE', width=240, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(2, 'NAME (ENG)', width=300, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(4, 'NAME (KOR)', width=300, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.itemDoubleClick)
-        self.list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.itemSelection)
-        self.list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.itemDeSelection)
-
-        twitterDataBox_sizer.Add(self.list_ctrl, 1, wx.EXPAND)
-        #         self.leftPanel.Bind(wx.EVT_LIST_ITEM_SELECTED, self.OnSelectMustHave, self.list_ctrl)
-
-        self.leftPanel.SetSizer(twitterDataBox_sizer)
-        #####################
         self.rightPanel = wx.Panel(splitter)
         resultBox = wx.StaticBox(self.rightPanel)
         self.resultBox_sizer = wx.StaticBoxSizer(resultBox, orient=wx.VERTICAL)
@@ -417,13 +317,16 @@ class MainPanel2(wx.Panel):
         #######################
 
         splitter.SplitVertically(self.leftPanel, self.rightPanel)
-        splitter.SetMinimumPaneSize(900)
+        splitter.SetMinimumPaneSize(1010)
+        # splitter.SetMin
         mainSizer.Add(splitter, 1, wx.EXPAND)
 
         self.SetSizer(mainSizer)
 
         self.nullPanel1 = NullDataPanel(self)
-        self.nullPanel2 = NullDataPanel(self)
+        self.nullPanel2 = PDFViewPanel(self)
+        self.nullPanel2.viewer.LoadFile(r"E:\Emul\Full_Roms_cache\1\18455_manuals_jp.pdf")
+        self.nullPanel2.viewer.SetZoom(-1)
         self.nullPanel3 = NullDataPanel(self)
         self.nullPanel4 = NullDataPanel(self)
 
@@ -528,12 +431,10 @@ class MainPanel(wx.Panel):
                                      style=wx.LC_REPORT
                                            | wx.BORDER_SUNKEN
                                      )
-        size1 = 120
-        size2 = 120
-        self.list_ctrl.InsertColumn(0, 'NAME', width=size1, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(1, 'SYSTEM', width=size2, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(2, 'PLATFORM', width=size1, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(4, '# OF GAMES', width=size1, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(0, 'NAME', width=140, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(1, 'SYSTEM', width=80, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(2, 'PLATFORM', width=100, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(4, '# GAME', width=80, format=wx.LIST_FORMAT_CENTER)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.itemDoubleClick)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.itemSelection)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.itemDeSelection)
@@ -583,7 +484,7 @@ class MainPanel(wx.Panel):
         # #######################
 
         splitter.SplitVertically(self.leftPanel, self.rightPanel)
-        splitter.SetMinimumPaneSize(520)
+        splitter.SetMinimumPaneSize(420)
         mainSizer.Add(splitter, 1, wx.EXPAND)
 
         self.SetSizer(mainSizer)
@@ -809,6 +710,22 @@ class MergeDialog(wx.Dialog):
         pnl = wx.Panel(self)
 
 
+class PDFViewPanel(sc.SizedPanel):
+        def __init__(self, parent):
+            super(PDFViewPanel, self).__init__(parent)
+            self.buttonpanel = pdfButtonPanel(self, wx.NewId(),
+                                    wx.DefaultPosition, wx.DefaultSize, 0)
+            self.buttonpanel.SetSizerProps(expand=True)
+            self.viewer = pdfViewer(self, wx.NewId(), wx.DefaultPosition,
+                                    wx.DefaultSize,
+                                    wx.HSCROLL|wx.VSCROLL|wx.SUNKEN_BORDER)
+            self.viewer.UsePrintDirect = False
+            self.viewer.SetSizerProps(expand=True, proportion=1)
+
+            # introduce buttonpanel and viewer to each other
+            self.buttonpanel.viewer = self.viewer
+            self.viewer.buttonpanel = self.buttonpanel    
+
 
 class NullDataPanel(wx.Panel):
     def __init__(self, parent):
@@ -816,7 +733,7 @@ class NullDataPanel(wx.Panel):
         wx.StaticText(self, -1, "Please Click Data Item", (40, 40))
 
 
-class GridPanelNews(wx.Panel):
+class GridPanelGames(wx.Panel):
     def __init__(self, parent, tableName, titleQuery, newsNum, list_ctrl):
         wx.Panel.__init__(self, parent)
         self.myGrid = gridlib.Grid(self)
@@ -827,18 +744,167 @@ class GridPanelNews(wx.Panel):
         self.reData = None
         self.applyQuery = ""
 
+        optionBox = wx.StaticBox(self, label='Query Option')
+        optionBox_sizer = wx.StaticBoxSizer(optionBox, orient=wx.VERTICAL)
+        optionBox_Gridsizer = wx.GridBagSizer(1, 2)
+        self.queryStr = wx.TextCtrl(self, value="", size=(450, -1))
+        optionBox_Gridsizer.Add(wx.StaticText(self, label="Query : "), pos=(0, 0))
+        optionBox_Gridsizer.Add(self.queryStr, pos=(0, 1))
+        self.apply_button = wx.Button(self, label="Apply", size=(60, 23))
+        optionBox_Gridsizer.Add(self.apply_button, pos=(0, 3), flag=wx.TOP | wx.RIGHT, border=1)
+        # self.apply_button.Bind(wx.EVT_BUTTON, self.queryButtonClick)
 
+        self.filtrting_button = wx.Button(self, label="Filtering", size=(90, 23))
+        optionBox_Gridsizer.Add(self.filtrting_button, pos=(0, 4), flag=wx.TOP | wx.RIGHT, border=1)
+        # self.filtrting_button.Bind(wx.EVT_BUTTON, self.filtrting_button_click)
+        self.dbox = None
 
-class GridPanelWord(wx.Panel):
-    def __init__(self, parent, tableName):
-        wx.Panel.__init__(self, parent)
-        self.myGrid = gridlib.Grid(self)
+        self.queryResultStr = wx.StaticText(self, label="", style=wx.TE_RICH)
+        optionBox_Gridsizer.Add(self.queryResultStr, pos=(1, 0))
+
+        self.save_button = wx.Button(self, label="Save", size=(60, 23))
+        #         self.save_button.Disable()
+        optionBox_Gridsizer.Add(self.save_button, pos=(1, 3), flag=wx.TOP | wx.RIGHT, border=1)
+        # self.save_button.Bind(wx.EVT_BUTTON, self.querySaveClick)
+
+        optionBox_sizer.Add(optionBox_Gridsizer, flag=wx.EXPAND | wx.HORIZONTAL | wx.TOP | wx.LEFT | wx.RIGHT, border=2)
+
+        global OPTION_LINENUM
+        if newsNum > OPTION_LINENUM:
+            newsNum = OPTION_LINENUM
+        self.newsNum = newsNum
+        self.titleQuery = titleQuery
+        self.photo = None
+        self.tableName = tableName
+        self.myGrid.CreateGrid(newsNum, 3)
+        self.myGrid.SetColLabelValue(0, "FILE")
+        self.myGrid.SetColLabelValue(1, "NAME (EN)")
+        self.myGrid.SetColLabelValue(2, "NAME (KR)")
+        self.myGrid.SetColSize(1, 500)
+        d_size = 300
+        self.myGrid.SetColSize(0, d_size)
+        self.myGrid.SetColSize(1, d_size)
+        self.myGrid.SetColSize(2, d_size)
+
+        self.myGrid.SetCellValue(0, 0, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        self.myGrid.SetCellValue(1, 0, str(1212121212121231231232))
+
+        self.myGrid.Bind(gridlib.EVT_GRID_LABEL_LEFT_CLICK, self.showPopupMenu)
+        self.myGrid.Bind(gridlib.EVT_GRID_CELL_LEFT_DCLICK, self.cellDoubleClick)
+
+        # global NMDB
+        # dataList = NMDB.getAllRowData(tableName, rowNum=OPTION_LINENUM)
+        # rowNum = 0
+        # for line in dataList[:self.newsNum]:
+        #     self.myGrid.SetCellValue(rowNum, 0, line[0])
+        #     self.myGrid.SetCellValue(rowNum, 1, line[1][:500])
+        #     self.myGrid.SetCellValue(rowNum, 2, str(line[2]))
+        #     self.myGrid.SetCellValue(rowNum, 3, line[3])
+        #     self.myGrid.SetCellValue(rowNum, 4, str(line[4]))
+        #     self.myGrid.SetCellValue(rowNum, 5, str(line[5]))
+        #     self.myGrid.SetCellValue(rowNum, 6, line[6])
+        #     self.myGrid.SetCellValue(rowNum, 7, line[7])
+        #     rowNum += 1
+
+        self.myGrid.EnableEditing(False)
+        self.myGrid.GetGridWindow().Bind(wx.EVT_MOTION, self.onMouseOver)
+        #         myGrid.ChangedValue = False
 
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(self.myGrid, 1, wx.EXPAND)
+        sizer.Add(optionBox_sizer)
+        sizer.Add(self.myGrid, 1, flag=wx.EXPAND | wx.HORIZONTAL | wx.TOP | wx.LEFT | wx.RIGHT, border=2)
+
         self.SetSizer(sizer)
         self.Centre()
         self.Show(True)
+
+
+    def cellDoubleClick(self, event):
+        index = event.GetRow()
+        print(index)
+        url = self.myGrid.GetCellValue(index, 6)
+        webbrowser.open(url)
+
+    def onMouseOver(self, event):
+        try:
+            x, y = self.myGrid.CalcUnscrolledPosition(event.GetX(), event.GetY())
+            coords = self.myGrid.XYToCell(x, y)
+            col = coords[1]
+            row = coords[0]
+            msg = self.myGrid.GetCellValue(row, col)
+            event.GetEventObject().SetToolTip(msg)
+        except:
+            pass
+
+    def showPopupMenu(self, event):
+        menu = wx.Menu()
+        # Show how to put an icon in the menu
+        self.sortCol = event.GetCol()
+        item1 = wx.MenuItem(menu, -1, "Sorting(Ascending)")
+        menu.Append(item1)
+        menu.Bind(wx.EVT_MENU, self.onPopupItemSelectedAscending, item1)
+        item2 = wx.MenuItem(menu, -1, "Sorting(Descending)")
+        menu.Append(item2)
+        menu.Bind(wx.EVT_MENU, self.onPopupItemSelectedDescending, item2)
+
+        #         menu.Append(self.popupID2, "Two")
+        #         menu.Append(self.popupID3, "Three")
+
+        # Popup the menu.  If an item is selected then its handler
+        # will be called before PopupMenu returns.
+        self.PopupMenu(menu)
+        menu.Destroy()
+
+    def onPopupSorting(self, isReverseOrder):
+        global OPTION_LINENUM
+        self.myGrid.EnableEditing(True)
+        selectedColNum = self.sortCol
+        if isReverseOrder:
+            sortOrder = "DESC"
+        else:
+            sortOrder = "ASC"
+        global NMDB
+        selectedColDict = {-1: "title", 0: "title", 1: "content", 2: "writer", 3: "date", 4: "category", 5: "section",
+                           6: "url", 7: "source"}
+        try:
+            selectCol = selectedColDict[selectedColNum]
+        except:
+            selectCol = "title"
+        tmpDataList = NMDB.getAllRowDataOrdered(self.tableName, selectCol, sortOrder, beforeSortTup=self.beforSortTup)
+        self.beforSortTup = (selectCol, sortOrder)
+
+        return tmpDataList
+
+    def setCell(self, tmpDataList):
+        rowNum = 0
+        global OPTION_LINENUM
+        if self.newsNum < OPTION_LINENUM:
+            viewLine = self.newsNum
+        else:
+            viewLine = OPTION_LINENUM
+        for line in tmpDataList[:viewLine]:
+            self.myGrid.SetCellValue(rowNum, 0, line[0])
+            self.myGrid.SetCellValue(rowNum, 1, line[1][:500])
+            self.myGrid.SetCellValue(rowNum, 2, str(line[2]))
+            self.myGrid.SetCellValue(rowNum, 3, line[3])
+            self.myGrid.SetCellValue(rowNum, 4, str(line[4]))
+            self.myGrid.SetCellValue(rowNum, 5, str(line[5]))
+            self.myGrid.SetCellValue(rowNum, 6, line[6])
+            self.myGrid.SetCellValue(rowNum, 7, line[7])
+            rowNum += 1
+
+        self.myGrid.EnableEditing(False)
+
+    def onPopupItemSelectedAscending(self, event):
+        tmpDataList = self.onPopupSorting(False)
+        self.setCell(tmpDataList)
+
+    #         print selectedColNum
+
+    def onPopupItemSelectedDescending(self, event):
+        tmpDataList = self.onPopupSorting(True)
+        self.setCell(tmpDataList)
+
 
 
 
@@ -947,14 +1013,29 @@ class OptionBox(wx.Dialog):
     def __init__(self):
         super(OptionBox, self).__init__(None, title="Preference")
         self.InitUI()
-        self.SetSize(50,50)
+        m_d_size = (340, 190)
+        self.SetSize(m_d_size)
 
     def InitUI(self):
         global OPTION_LINENUM
         pnl = wx.Panel(self)
+        wx.StaticBox(pnl, label='Options', pos=(5, 5),
+                     size=(310, 70))
+        wx.StaticText(pnl, label="Maximum rows to display : ", pos=(15, 30))
+        self.spinCtrl = wx.SpinCtrl(pnl, value=str(OPTION_LINENUM), pos=(195, 29),
+                                    size=(90, -1), min=1, max=999999999)
+
+        btn_ok = wx.Button(pnl, label='OK', pos=(100, 90),
+                           size=(60, -1))
+        btn_ok.Bind(wx.EVT_BUTTON, self.OnOk)
+        btn_close = wx.Button(pnl, label='Cancel', pos=(180, 90),
+                              size=(60, -1))
+        btn_close.Bind(wx.EVT_BUTTON, self.OnClose)
 
     def OnOk(self, e):
         global OPTION_LINENUM
+        OPTION_LINENUM = int(self.spinCtrl.GetValue())
+        self.Destroy()
 
     def OnClose(self, e):
         self.Close(True)

@@ -2,7 +2,7 @@ import sqlite3
 from thefuzz import process
 from thefuzz import fuzz
 import os
-from googletrans import Translator
+# from googletrans import Translator
 import re
 import zlib, hashlib
 from fastcrc import crc8, crc16, crc32, crc64

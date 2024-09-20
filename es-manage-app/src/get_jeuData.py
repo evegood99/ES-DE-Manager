@@ -1012,6 +1012,118 @@ class SSRomsMeta:
         cur.execute(f"UPDATE {tb_name} SET src_name = game_name where src_name is null")
         self.con.commit()
 
+    def addMediaColumn(self):
+        tb_name = 'games_'+self.system_name
+        cursor = self.con.cursor()
+        col_list = ['titlescreens', 'screenshots', 'wheel', 'cover', 'box2dside', 'boxtexture', 'box3d', 'videos', 'manuals', 'support']
+        for col in col_list:
+            cursor.execute(f'ALTER TABLE {tb_name} ADD COLUMN {col} TEXT')
+        self.con.commit()
+
+    def addMediaToDB(self):
+        # self.addMediaColumn()
+        regions = set(['jp','kr','wor','us','eu','ss'])
+        media_type_set = {'sstitle':'titlescreens', 'ss':'screenshots', 'wheel':'wheel', 'wheel-hd':'wheel', 'box-2D':'cover', 'box-2D-side':'box2dside', 'box-texture':'boxtexture', 'box-3D':'box3d', 'video':'videos', 'manuel':'manuals', 'support-2D':'support'}
+        json_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'json'
+        n = 0
+
+        pr_data_list = []
+        for file_name in set(os.listdir(json_path)):
+            with open(json_path+'\\'+file_name, encoding='utf-8') as fp:
+                result_data = json.load(fp)
+                game_id = result_data['response']['jeu']['id']
+                tmp_data = {}
+                for media_data in result_data['response']['jeu']['medias']:
+                    m_type = media_data['type']
+                    if m_type in media_type_set:
+                        if 'region' in media_data:
+                            if media_data['region'] in regions:
+                                region = '('+media_data['region']+')'
+                            else:
+                                continue
+                        else:
+                            region = ''
+                        
+                        if 'support' in media_data:
+                            if m_type in tmp_data and m_type+region in tmp_data[m_type]:
+                                continue
+                            spt = media_data['support']
+                            support = f'[{spt}]'
+                        else:
+                            support = ''
+                        col_name = media_type_set[m_type]
+                        tmp_data.setdefault(m_type, set([])).add(m_type+region+support)
+                
+                if 'sstitle' in tmp_data:
+                    sstitle = ';;'.join(tmp_data['sstitle'])
+                else:
+                    sstitle = None
+
+                if 'ss' in tmp_data:
+                    ss = ';;'.join(tmp_data['ss'])
+                else:
+                    ss = None
+                
+                if 'wheel' in tmp_data:
+                    wheel = ';;'.join(tmp_data['wheel'])
+                else:
+                    wheel = None
+
+                if 'wheel-hd' in tmp_data:
+                    if wheel == None:
+                        wheel = ';;'.join(tmp_data['wheel-hd'])
+                    else:
+                        wheel = wheel+';;'+';;'.join(tmp_data['wheel-hd'])
+
+                if 'box-2D' in tmp_data:
+                    box2d = ';;'.join(tmp_data['box-2D'])
+                else:
+                    box2d = None
+
+                if 'box-2D-side' in tmp_data:
+                    box2dside = ';;'.join(tmp_data['box-2D-side'])
+                else:
+                    box2dside = None
+
+                if 'box-texture' in tmp_data:
+                    boxtexture = ';;'.join(tmp_data['box-texture'])
+                else:
+                    boxtexture = None
+
+                if 'box-3D' in tmp_data:
+                    box3d = ';;'.join(tmp_data['box-3D'])
+                else:
+                    box3d = None
+
+                if 'video' in tmp_data:
+                    video = ';;'.join(tmp_data['video'])
+                else:
+                    video = None
+
+                if 'manuel' in tmp_data:
+                    manuel = ';;'.join(tmp_data['manuel'])
+                else:
+                    manuel = None
+
+                if 'support-2D' in tmp_data:
+                    support2D = ';;'.join(tmp_data['support-2D'])
+                else:
+                    support2D = None
+
+
+                pr_data_list.append((sstitle, ss, wheel, box2d, box2dside, boxtexture, box3d, video, manuel, support2D, game_id))
+
+        # for line in pr_data_list:
+        #     if len(line) != 11:
+        #         print(line)
+
+        cursor = self.con.cursor()
+        tb_name = 'games_'+self.system_name
+        cursor.executemany(f'UPDATE {tb_name} SET titlescreens=?, screenshots=?, wheel=?, cover=?, box2dside=?, boxtexture=?, box3d=?, videos=?, manuals=?, support=? WHERE id=?',pr_data_list )
+        self.con.commit()
+
+
+
     def getAddMedia(self):
         roms_cache_path = ROMS_CACHE_PATH+'\\'+str(self.sys_id)
         cached_data = set([])
@@ -1026,67 +1138,116 @@ class SSRomsMeta:
                 region = f[2]
                 cached_data.add((game_id, media_type, region))
             cached_data.add((game_id, media_type))
+        
+        # for line in cached_data:
+        #     print(line)
 
         regions = set(['jp','kr','wor','us','eu','ss'])
         media_type_set = {'sstitle':'titlescreens', 'ss':'screenshots', 'wheel':'wheel', 'wheel-hd':'wheel', 'box-2D':'cover', 'box-2D-side':'box2dside', 'box-texture':'boxtexture', 'box-3D':'box3d', 'video':'videos', 'manuel':'manuals', 'support-2D':'support'}
         json_path = ROMS_XML_BASE_PATH+'\\'+self.system_name+'\\'+'json'
         n = 0
-
         pr_data_list = []
-        for file_name in set(os.listdir(json_path)):
-            with open(json_path+'\\'+file_name, encoding='utf-8') as fp:
-                result_data = json.load(fp)
-                game_id = result_data['response']['jeu']['id']
-                game_name_sample = result_data['response']['jeu']['noms'][0]['text']
-                for media_data in result_data['response']['jeu']['medias']:
+        cursor = self.con.cursor()
+        col_list = ['id', 'titlescreens', 'screenshots', 'wheel', 'cover', 'box2dside', 'boxtexture', 'box3d', 'videos', 'manuals', 'support']
+        tb_name = 'games_'+self.system_name
+        r = cursor.execute(f"SELECT id, titlescreens, screenshots, wheel, cover, box2dside, boxtexture, box3d, videos, manuals, support FROM {tb_name}")
+        for line in r:
+            game_id = line[0]
 
-                    m_type = media_data['type']
-                    if m_type in media_type_set:
-                        if m_type == 'manuel':
-                            region = media_data['region']
-                            if region in regions:
-                                m_region_ext = '_'+region+'.pdf'
-                            else:
-                                continue
-                        elif m_type == 'video':
-                            region = None
-                            m_region_ext = '.mp4'
+            for x in range(1, 11):
+                if line[x] == None:
+                    continue
+                for xx in line[x].split(';;'):
+                    result = re.findall(r'([0-9a-zA-Z-]+)|\((.*?)\)', xx)
+                    output = [x for group in result for x in group if x]
+                    media_type = media_type_set[output[0]]
+                    if len(output) == 1:
+                        region = None
+                        if x == 8:
+                            file_name = game_id+'_'+media_type+'.mp4'
+                        elif x == 9:
+                            file_name = game_id+'_'+media_type+'.pdf'
                         else:
-                            region = media_data['region']
-                            if region in regions:
-                                m_region_ext = '_'+region+'.pdf'
-                            else:
-                                continue
-                            m_region_ext = '_'+region+'.png'
-                            
-                        m_type_mid_name = media_type_set[m_type]
-
-                        if (game_id, m_type_mid_name) in cached_data:
-                            if region != None and not (game_id, m_type_mid_name,region) in cached_data and  region in ['jp', 'kr']:
-                                new_media_name = str(game_id)+'_'+m_type_mid_name+m_region_ext
-                                # print(new_media_name, game_id, m_type+f'({region})')
-                                m_type_f = m_type+f'({region})'
-                                if m_type == 'support-2D' and 'support' in media_data:
-                                    m_type_f = m_type_f+'[1]'
-
-                                pr_data_list.append((game_id, new_media_name, m_type_f))
-                                n += 1
-                            else:
-                                continue
+                            file_name = game_id+'_'+media_type+'.png'
+                    else:
+                        region = output[1]
+                        if x == 8:
+                            file_name = game_id+'_'+media_type+'_'+region+'.mp4'
+                        elif x == 9:
+                            file_name = game_id+'_'+media_type+'_'+region+'.pdf'
                         else:
-                            if region == None:
-                                m_type_f = m_type
-                            else:
-                                m_type_f = m_type+f'({region})'
-                            if m_type == 'support-2D' and 'support' in media_data:
-                                m_type_f = m_type_f+'[1]'
-
-                            new_media_name = str(game_id)+'_'+m_type_mid_name+m_region_ext
-                            pr_data_list.append((game_id, new_media_name, m_type_f))
-                            # print(new_media_name, m_type+f'({region})')
-                            n += 1
+                            file_name = game_id+'_'+media_type+'_'+region+'.png'
+                    if (game_id, media_type, region) in cached_data:
+                        # print((game_id, media_type, region))
+                        continue
+                    else:
+                        pr_data_list.append((game_id, file_name, xx))
 
         self.tot_search_num = len(set(pr_data_list))
+        # print(self.tot_search_num)
+        # for pr_data in pr_data_list:
+        #     print(pr_data)
+
+        # pr_data_list = []
+        # for file_name in set(os.listdir(json_path)):
+        #     with open(json_path+'\\'+file_name, encoding='utf-8') as fp:
+        #         result_data = json.load(fp)
+        #         game_id = result_data['response']['jeu']['id']
+        #         game_name_sample = result_data['response']['jeu']['noms'][0]['text']
+        #         for media_data in result_data['response']['jeu']['medias']:
+
+        #             m_type = media_data['type']
+        #             if m_type in media_type_set:
+        #                 if m_type == 'manuel':
+        #                     region = media_data['region']
+        #                     if region in regions:
+        #                         m_region_ext = '_'+region+'.pdf'
+        #                     else:
+        #                         continue
+        #                 elif m_type == 'video':
+        #                     region = None
+        #                     m_region_ext = '.mp4'
+        #                 else:
+        #                     region = media_data['region']
+        #                     if region in regions:
+        #                         m_region_ext = '_'+region+'.pdf'
+        #                     else:
+        #                         continue
+        #                     m_region_ext = '_'+region+'.png'
+                            
+        #                 m_type_mid_name = media_type_set[m_type]
+
+        #                 if (game_id, m_type_mid_name) in cached_data:
+        #                     if region != None and not (game_id, m_type_mid_name,region) in cached_data and  region in ['jp', 'kr']:
+        #                         new_media_name = str(game_id)+'_'+m_type_mid_name+m_region_ext
+        #                         # print(new_media_name, game_id, m_type+f'({region})')
+        #                         m_type_f = m_type+f'({region})'
+        #                         if m_type == 'support-2D' and 'support' in media_data:
+        #                             m_type_f = m_type_f+'[1]'
+
+        #                         pr_data_list.append((game_id, new_media_name, m_type_f))
+        #                         n += 1
+        #                     else:
+        #                         continue
+        #                 else:
+        #                     if region == None:
+        #                         m_type_f = m_type
+        #                     else:
+        #                         m_type_f = m_type+f'({region})'
+        #                     if m_type == 'support-2D' and 'support' in media_data:
+        #                         m_type_f = m_type_f+'[1]'
+
+        #                     new_media_name = str(game_id)+'_'+m_type_mid_name+m_region_ext
+        #                     pr_data_list.append((game_id, new_media_name, m_type_f))
+        #                     # print(new_media_name, m_type+f'({region})')
+        #                     n += 1
+
+        # self.tot_search_num = len(set(pr_data_list))
+        # print(self.tot_search_num)
+
+        # for pr_data in pr_data_list:
+        #     print(pr_data)
+
         th_list = []
         for data in set(pr_data_list):
             time.sleep(0.2)
@@ -1120,7 +1281,7 @@ class SSRomsMeta:
         if self.stop_call_api:
             self.run_bucket.remove(out_file_name)
             return 0
-        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "ssid":"evegood2", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "jeuid":game_id, "media":call_media_type}
+        param = {"devid":"evegood", "devpassword":"yPoo9XlnDCG", "ssid":"evegood", 'sspassword':"1132dudwls", "systemeid":self.sys_id, "jeuid":game_id, "media":call_media_type}
         try:
             if 'video' in call_media_type:
                 base_url = self.base_video_url
@@ -1134,25 +1295,31 @@ class SSRomsMeta:
             # print('Timeout Error : ',game_id)
             self.run_bucket.remove(out_file_name)
             return 0
-        if resp.status_code == 200  and not 'Erreur' in resp.text[:100] and not 'Error' in resp.text[:100] and not 'NOMEDIA' in resp.text[:100]:
-            with open(ROMS_CACHE_PATH+'\\'+str(self.sys_id)+'\\'+out_file_name, 'wb') as f: 
-                for chunk in resp.iter_content(chunk_size = 1024*1024): 
-                    if chunk: 
-                        f.write(chunk)         
+        except Exception as e:
             self.run_bucket.remove(out_file_name)
-        
-        elif resp.status_code == 430 or resp.status_code == 431:
-            self.stop_call_api = True
+            print('Error : ',e)
+
+        try:
+            if resp.status_code == 200  and not 'Erreur' in resp.text[:100] and not 'Error' in resp.text[:100] and not 'NOMEDIA' in resp.text[:100]:
+                with open(ROMS_CACHE_PATH+'\\'+str(self.sys_id)+'\\'+out_file_name, 'wb') as f: 
+                    for chunk in resp.iter_content(chunk_size = 1024*1024): 
+                        if chunk: 
+                            f.write(chunk)         
+                self.run_bucket.remove(out_file_name)
+            
+            elif resp.status_code == 430 or resp.status_code == 431:
+                self.stop_call_api = True
+                self.run_bucket.remove(out_file_name)
+                print('Error : ', resp.text, '::',game_id)
+                return 0
+
+            else:
+                self.run_bucket.remove(out_file_name)
+                print('Error : ', resp.text, '::',game_id, call_media_type)
+                return 0
+        except Exception as e:
             self.run_bucket.remove(out_file_name)
-            print('Error : ', resp.text, '::',game_id)
-            return 0
-
-        else:
-            self.run_bucket.remove(out_file_name)
-            print('Error : ', resp.text, '::',game_id, call_media_type)
-            return 0
-
-
+            print('Error : ',e)
 
 
 
@@ -1382,13 +1549,13 @@ def test2():
 
 def test():
     # s_list = ["3do", "3ds", "amiga", "atarijaguar", "atarist", "dos", "dreamcast", "famicom", "gameandwatch", "gamegear", "gb","gbc","gba","gc","mastersystem", "megacd", "megadrive", "msx", "n64", "nds", "pc98", "pcengine", "pcenginecd", "pcfx", "ps2", "psp", "psx", "saturn", "sega32x", "sfc", "wii", "wonderswancolor", "x68000"]
-    system_name = 'gamegear'
-    # for system_name in s_list[1:]:
+    system_name = 'gb'
+    # for system_name in s_list:
     ss= SSRomsMeta(system_name)
     # ss.makeDBTable("Battle Chess Enhanced")
     # ss.addTentacleMetaAndFillName()
     ss.getAddMedia()
-
+    #    ss.addMediaToDB()
     # for system_name in s_list[2:]:
         # 'mastersystem','megacd', 'megadrive','msx','n64']:
         # ss= SSRomsMeta(system_name)
