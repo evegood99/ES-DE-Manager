@@ -5,12 +5,18 @@ import os
 # from googletrans import Translator
 import re
 import zlib, hashlib
-from fastcrc import crc8, crc16, crc32, crc64
+# from fastcrc import crc8, crc16, crc32, crc64
 import itertools
 import operator
 from collections import Counter
+import uuid
 
 DB_FILE_PATH = "./es-manage-app/src/games_meta.db"
+USER_DB_PATH = "./es-manage-app/src/user_meta.db"
+USER_TABLE_SCHEMA = "(id text, name text, system text, platform text, num_game int)"
+GAMES_TABLE_SCHEMA = "(file text, title_s text, title_s_kor text, title text, title_kor text, desc text, desc_kor text, genre text, releasedate text, developer text, players text, titlescreens text, screenshots text, wheel text, cover text, box2dside text, boxtexture text, box3d text, videos text, manuals text, support text)"
+
+
 
 def most_frequent_element(lst):
     # 리스트의 빈도수 계산
@@ -247,12 +253,63 @@ class DownMedia:
     def __init__(self, system_name):
         self.system_name = system_name
 
-    # def 
+
+class UserMeta:
+
+    def __init__(self):
+        self.con = sqlite3.connect(USER_DB_PATH)
+        self.user_meta_table = 'USER_META'
+        cur = self.con.cursor()
+        r = cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.user_meta_table}'")
+        r = r.fetchone()
+        if r == None:
+            cur = self.con.cursor()
+            cur.execute(f"CREATE TABLE {self.user_meta_table}{USER_TABLE_SCHEMA};")
+
+
+    def getUserMeta(self):
+        cur = self.con.cursor()
+        r = cur.execute(f"SELECT * FROM {self.user_meta_table}")
+        result = []
+        for line in r:
+            result.append(line)
+        return result
+    
+    def addSystem(self, name, sys_name, platform, num_game, data_list):
+        tb_id = 'tb_'+str(uuid.uuid4().hex)
+        sql_insert = f"INSERT INTO {self.user_meta_table} (id, name ,system, platform, num_game) VALUES({tb_id}, {name}, {sys_name}, {platform}, {num_game})"
+        print(sql_insert)
+        cur = self.con.cursor()
+        cur.execute(sql_insert)
+        try:
+            cur.execute(f"CREATE TABLE {tb_id}{GAMES_TABLE_SCHEMA};")
+        except:
+            pass
+        game_v = '('+','.join(['?']*len(GAMES_TABLE_SCHEMA.split(',')))+')'
+        cur.executemany(f'INSERT INTO {tb_id} VALUES{game_v};', data_list)
+        self.con.commit()
+
+
+    def deleteSystem(self, del_index_list):
+        cur = self.con.cursor()
+        del_index_list.sort(reverse=True)
+        rm_id_set= set([])
+        for index in del_index_list:
+            r = cur.execute(f"SELECT id FROM {self.user_meta_table} WHERE ROWID IN (SELECT ROWID FROM {self.user_meta_table} ORDER BY ROWID LIMIT 1 OFFSET {str(index-1)});")
+            rm_id = r.fetchone()[0]
+            rm_id_set.add(rm_id)
+
+        for rm_id in rm_id_set:
+            cur.execute(f"DELETE FROM {self.user_meta_table} WHERE id = '{rm_id}'")            
+            cur.execute(f"DROP TABLE {rm_id}")
+        self.con.commit()
+        cur.execute('VACUUM')
+
 
 class MatchingRoms:
 
     def __init__(self, roms_path, system_name) -> None:
-        self.translator = Translator()
+        # self.translator = Translator()
         self.con = sqlite3.connect(DB_FILE_PATH)
         self.roms_path = roms_path
         if system_name == 'mame':
@@ -260,6 +317,7 @@ class MatchingRoms:
         self.system_name = system_name
         self.fuzz_data = {}
         self.fuzz_data2 = {}
+        self.game_info = {}
         self.read_fuzz_data()
 
 
@@ -269,6 +327,7 @@ class MatchingRoms:
         
         r = cur.execute(f"SELECT * from {tb_name}")
         for line in r:
+            self.game_info[int(line[0])] = line[1:]
             game_name = line[1]
             self.fuzz_data2[game_name] = line[0]
             game_name = game_name.replace(' : ',' ')
@@ -293,10 +352,9 @@ class MatchingRoms:
                 r_hash = get_hash(file_full_path)
                 crc_val = r_hash['crc']
                 md5_val = r_hash['md5']
-
                 cur = self.con.cursor()
                 tb_name = 'roms_'+self.system_name
-                r = cur.execute(f"SELECT * from {tb_name} WHERE rom_md5 = '{str(md5_val)}' or rom_crc = '{str(crc_val)}'")
+                r = cur.execute(f"SELECT * from {tb_name} WHERE rom_md5 like '{str(md5_val)}' or rom_crc like '{str(crc_val)}'")
                 r = r.fetchone()
                 if r != None:
                     selected_game_roms_info[r[8]] = [r]
@@ -306,7 +364,7 @@ class MatchingRoms:
                 crc_val = get_crc(file_full_path)
                 cur = self.con.cursor()
                 tb_name = 'roms_'+self.system_name
-                r = cur.execute(f"SELECT * from {tb_name} WHERE  rom_crc = '{str(crc_val)}'")
+                r = cur.execute(f"SELECT * from {tb_name} WHERE  rom_crc like '{str(crc_val)}'")
                 r = r.fetchone()
                 if r != None:
                     selected_game_roms_info[r[8]] = [r]
@@ -327,7 +385,52 @@ class MatchingRoms:
         # else:
         #     target_db_data = self.rom_file_name
 
+    def extractMainFile(self, file_list):
+        selected_file = None
+        file_list = list(file_list)
+        file_list.sort()
+        for ext in ['.cue', '.ccd', '.mds', '.iso', '.img']:
+            for file_name in file_list:
+                if file_name[-4:].lower() == ext:
+                    selected_file = file_name
+                    break
+            if selected_file:
+                break
+        if selected_file == None:
+            return file_list[0], []
+        return selected_file, [i for i in file_list if i != selected_file]
+
+    def readImageFile(self, base_path, file_name):
+        inner_set = set([])
+        if file_name[-4:] == '.m3u':
+            with open(base_path+'\\'+file_name) as fp:
+                for line in fp:
+                    inner_file = line.strip()
+                    inner_set.add(inner_file)
+            inner_set = list(inner_set)
+            inner_set.sort()
+            return inner_set
+        elif file_name[-4:] == '.cue':
+            with open(base_path+'\\'+file_name) as fp:
+                file_str = fp.read()
+            inner_set = set(re.findall(r'FILE "(.*?)" BINARY', file_str))
+            inner_set = list(inner_set)
+            inner_set.sort()
+            return inner_set
+
+        elif file_name[-4:] == '.gdi':
+            with open(base_path+'\\'+file_name) as fp:
+                fp.readline()
+                for line in fp:
+                    inner_file = line.strip()
+                    inner_set.add(inner_file)
+        inner_set = list(inner_set)
+        inner_set.sort()
+        return inner_set
+
     def read_local_files(self, local_path=None, is_exclude_xml = True):
+
+        final_file_list = []
 
         if local_path == None:
             roms_path = self.roms_path
@@ -338,49 +441,85 @@ class MatchingRoms:
         else:
             rm_extension = ('.txt', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia', 'html')
 
-        direct_file = {}
-        direct_file_list = []
+        direct_file_list = {}
+        m3u_file_list = []
+        m3u_folder = set([])
         in_folder_file = {}
         for data_name in os.listdir(roms_path):
-            if os.path.isfile(roms_path+'\\'+data_name) and not data_name[-4:] in rm_extension:
-                file_name = data_name
-                direct_file.setdefault(remove_extension(file_name),[]).append(file_name)
+            if os.path.isfile(roms_path+'\\'+data_name) and not data_name[-4:].lower() in rm_extension:
+                if data_name[-4:].lower() == '.m3u':
+                    m3u_file_list.append((None, data_name))
+                else:
+                    direct_file_list.setdefault(remove_extension(data_name), set([])).add(data_name)
             elif os.path.isdir(roms_path+'\\'+data_name):
                 folder_name = data_name
-                for data_name_indir in os.listdir(roms_path+'\\'+data_name):
-                    if os.path.isfile(roms_path+'\\'+data_name+'\\'+data_name_indir) and not data_name_indir[-4:] in rm_extension:
+                for data_name_indir in os.listdir(roms_path+'\\'+folder_name):
+                    if os.path.isfile(roms_path+'\\'+folder_name+'\\'+data_name_indir) and not data_name_indir[-4:].lower() in rm_extension:
+                        if data_name_indir[-4:].lower() == '.m3u':
+                            m3u_file_list.append((folder_name, data_name_indir))
+                            m3u_folder.add(folder_name)
                         file_name = data_name_indir
                         in_folder_file.setdefault(folder_name, []).append(file_name)
             else:
                 continue
-
-
-        # for k in direct_file:
-        #     if len(direct_file[k]) == 0:
-
-
-    def read_local_files(self, local_path=None, is_exclude_xml = True):
-
-        if local_path == None:
-            roms_path = self.roms_path
-        else:
-            roms_path = local_path
-        if is_exclude_xml:
-            rm_extension = ('.txt', '.xml', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia', '.doc', '.hwp', '.xls', 'html')
-        else:
-            rm_extension = ('.txt', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia', 'html')
-
-        for data_name in os.listdir(roms_path):
-            if os.path.isfile(roms_path+'\\'+data_name) and not data_name[-4:] in rm_extension:
-                o_file_name = data_name
-            elif os.path.isdir(roms_path+'\\'+data_name):
-                o_file_name = data_name
+        
+        m3u_inner_set = set([])
+        for (path, m3u_file) in m3u_file_list:
+            if path == None:
+                in_path = roms_path
             else:
+                in_path = roms_path+'\\'+path
+            include_m3u_files = self.readImageFile(in_path, m3u_file)
+            final_file_list.append((m3u_file, include_m3u_files[0], path,include_m3u_files))
+            for f in include_m3u_files:
+                m3u_inner_set.add((path, remove_extension(f)))
+
+        rm_file_set = set([])
+        rm_file_set_no_ext = set([])
+        select_file_set = set([])
+        for file_name_noext in direct_file_list:
+            if (None, file_name_noext) in m3u_inner_set:
                 continue
-            yield o_file_name
+            file_list = direct_file_list[file_name_noext]
+            selected_file, unselected_file_list = self.extractMainFile(file_list)
+            final_file_list.append((selected_file, selected_file, None, [selected_file]+unselected_file_list))
+
+        for folder_name in in_folder_file:
+            if folder_name in m3u_folder:
+                continue
+            file_list = in_folder_file[folder_name]
+            selected_file, unselected_file_list = self.extractMainFile(file_list)
+            if 'slps_' in selected_file.lower():
+                final_file_list.append((selected_file, folder_name, folder_name, [selected_file]+unselected_file_list))
+            else:
+                final_file_list.append((selected_file, selected_file, folder_name, [selected_file]+unselected_file_list))
+        # print(final_file_list)
+        final_file_list.sort()
+        return final_file_list
+
+
+    # def read_local_files(self, local_path=None, is_exclude_xml = True):
+
+    #     if local_path == None:
+    #         roms_path = self.roms_path
+    #     else:
+    #         roms_path = local_path
+    #     if is_exclude_xml:
+    #         rm_extension = ('.txt', '.xml', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia', '.doc', '.hwp', '.xls', 'html')
+    #     else:
+    #         rm_extension = ('.txt', '.dat', '.mp3', '.mp4', '.bak', '.htm', '.pdf', '.png', '.jpg', '.gif', '.bmp', '.exe', '.bat' ,'edia', 'html')
+
+    #     for data_name in os.listdir(roms_path):
+    #         if os.path.isfile(roms_path+'\\'+data_name) and not data_name[-4:] in rm_extension:
+    #             o_file_name = data_name
+    #         elif os.path.isdir(roms_path+'\\'+data_name):
+    #             o_file_name = data_name
+    #         else:
+    #             continue
+    #         yield o_file_name
 
     def local_name(self, file_name):
-        yield file_name
+        yield (file_name, file_name, None)
 
     def searchDB(self, system_name, base_title, sub_title_list): # base_title 과 sub_title이 game_name 또는 filename 또는 src_name에 모두 존재할때
         tb_name = 'roms_'+system_name
@@ -652,7 +791,7 @@ class MatchingRoms:
         e_name = e_name_t[0]
         k_name = k_name_t[0]
         game_id = e_name_t[1]
-        return (e_name, k_name, game_id)
+        return (e_name, k_name, rom_to_game[game_id])
  
     def run(self, test=None, other_path=False): # test는 그냥 경로가 아닌 이름만 써서 테스트 할 경우, other_path는 xml파일 제외 여부정도,
         no_search = False
@@ -666,11 +805,14 @@ class MatchingRoms:
 
 
 
-        for o_file_name in iterator:
+        for data in iterator:
+            selected_file = data[0]
+            o_file_name = data[1]
+            folder = data[2]
             selected_game_roms_info = self.check_file_hash(o_file_name)
             if len(selected_game_roms_info) != 0:
                 # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'1')
+                yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'1')
                 # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                 continue
 
@@ -699,10 +841,18 @@ class MatchingRoms:
                             # print(insert_sql)
                             # print('pass 5') 
                             if len(selected_game_roms_info) == 0: #이 file은 쿼리 로 후보 자체를 찾을 수 없음.. (계속)
-                                selected_game_roms_info = self.check_file_hash(o_file_name, is_force_check=True)
+                                folder = data[2]
+                                for check_file in data[3]:
+                                    if folder != None:
+                                        f_o_file_name = folder+'\\'+check_file
+                                    else:
+                                        f_o_file_name = check_file
+                                    selected_game_roms_info = self.check_file_hash(f_o_file_name, is_force_check=True)
+                                    if len(selected_game_roms_info) > 0:
+                                        break
                                 if len(selected_game_roms_info) != 0:
                                     # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                                    yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'2')
+                                    yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'2')
                                     # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                                     continue
                                 else:
@@ -710,7 +860,7 @@ class MatchingRoms:
                                     if len(selected_game_roms_info) == 0:
                                         # print(o_file_name, 'NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOON')
                                         no_search = True
-                                        yield (o_file_name, (None, None, None))
+                                        yield (data[0], (None, None, None))
                                         # result_list.append((o_file_name, (None, None, None)))
                                         continue
                                         
@@ -720,7 +870,7 @@ class MatchingRoms:
                 selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
                 selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
                 # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'3')
+                yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'3')
                 # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                 continue
 
@@ -750,7 +900,7 @@ class MatchingRoms:
                     if len(selected_game_roms_info) == 1: #위에 제외 후 1개만 남았다면 그녁석을 선택 (끝)
                         selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
                         # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                        yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'4')
+                        yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'4')
                         # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                         continue
 
@@ -758,7 +908,7 @@ class MatchingRoms:
                         selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
                         selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
                         # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                        yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'5')
+                        yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'5')
                         # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                         continue
 
@@ -766,7 +916,7 @@ class MatchingRoms:
                     selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
                     selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
                     # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                    yield (o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info),'6')
+                    yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'6')
                     # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                     continue
 
@@ -855,18 +1005,31 @@ def test_nlp():
         print(o_file_name, t_list, bucket_str_list)
 
 def test():
-    rom_path = r'G:\ROMs\dos'
+    rom_path = r'D:\ROMs\megacd'
     # rom_path = r'G:\Roms\psx\70s Robot Anime Geppy-X'
     # rom_path = r'E:\Emul\Full_Roms_assets\ps2\textual'
-    system_name = 'dos'
+    system_name = 'megacd'
     mr = MatchingRoms(rom_path, system_name)
     # r = mr.get_roms_info(1025140)
     # print(r)
     # for line in mr.choice_list:
     #     print(line)
     r = mr.run(other_path=False)
+    # for k in mr.game_info:
+    #     print(k)
+    data_list = []
     for i in r:
-        print(i)
+        # print(type(i[1][2]))
+        print((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]])
+        data_list.append((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]])
+
+    um = UserMeta()
+    # "file, name, name_kor, desc, desc_kor, genre, releasedate, developer, players, titlescreens, screenshots, wheel, cover, box2dside, boxtexture, box3d, videos, manuals, support)"
+    # data_list = ['file','name', '네임']
+    name = 'test'
+    platform = 'window'
+    num_games = len(data_list)
+    um.addSystem(name, system_name, platform, num_games, data_list)
 
 if __name__ == "__main__":
     test()

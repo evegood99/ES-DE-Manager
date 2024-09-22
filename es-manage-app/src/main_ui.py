@@ -324,9 +324,10 @@ class MainPanel2(wx.Panel):
         self.SetSizer(mainSizer)
 
         self.nullPanel1 = NullDataPanel(self)
-        self.nullPanel2 = PDFViewPanel(self)
-        self.nullPanel2.viewer.LoadFile(r"E:\Emul\Full_Roms_cache\1\18455_manuals_jp.pdf")
-        self.nullPanel2.viewer.SetZoom(-1)
+        self.nullPanel2 = NullDataPanel(self)
+        self.pdfPanel = PDFViewPanel(self)
+        self.pdfPanel.viewer.LoadFile(r"D:\Emul\Full_Roms_cache\135\155680_manuals_us.pdf")
+        self.pdfPanel.viewer.SetZoom(-1)
         self.nullPanel3 = NullDataPanel(self)
         self.nullPanel4 = NullDataPanel(self)
 
@@ -334,6 +335,7 @@ class MainPanel2(wx.Panel):
         self.notebook.AddPage(self.nullPanel2, "SCREEN")
         self.notebook.AddPage(self.nullPanel3, "BOX-ART")
         self.notebook.AddPage(self.nullPanel4, "VIDEO")
+        self.notebook.AddPage(self.pdfPanel, "Manual")
 
         self.notebook.SetSelection(0)    
     def itemDoubleClick(self, event):
