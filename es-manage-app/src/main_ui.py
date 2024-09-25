@@ -23,9 +23,15 @@ import wx.grid as gridlib
 import copy
 import chardet
 import wx.lib.sized_controls as sc
+import wx.lib.mixins.listctrl as listmix
 from wx.lib.pdfviewer import pdfViewer, pdfButtonPanel
+from main_new import UserMeta, MatchingRoms
+import json
 # import selenium.webdriver as webdriver
 # import urllib2, StringIO
+
+
+SYSTEM_INFO_FILE_PATH = "info.json"
 
 # Fix for PyCharm hints warnings when using static methods
 
@@ -35,11 +41,14 @@ LINUX = (platform.system() == "Linux")
 MAC = (platform.system() == "Darwin")
 
 # Configuration
-WIDTH = 2160
+WIDTH = 2300
 HEIGHT = 1200
 
 OPTION_LINENUM = 2000
 LIST_CTRL = None
+
+USER_META_DB = 'user_meta.db'
+
 
 # options = webdriver.ChromeOptions()    
 # options.binary_location = r'..\bin\chrome.exe'
@@ -53,13 +62,6 @@ LIST_CTRL = None
 # driver.implicitly_wait(5) 
 # driver.get('https://www.instagram.com/explore/tags/a')  
 
-TEMP_DIR = tempfile.gettempdir()
-TEMP_PATH = os.path.join(TEMP_DIR, 'cyram_tempFile.db')
-print(TEMP_PATH)
-DATA_LIST = []
-NMDB = None
-
-
 
 
 def getPresentTime():
@@ -68,166 +70,30 @@ def getPresentTime():
     return time.strftime(timeForm, localTime)
 
 
-class AddSystem(wx.Frame):
-    def __init__(self, parent, id, title, targerField, tableName):
-        ID_NEW = 1
-        ID_ADDFILE = 2
-        ID_DELETE = 3
-        ID_CLEAR = 4
-        wx.Frame.__init__(self, parent, id, title, size=(970, 600))
-        titleIcon = imageIco.cloudIco.GetIcon()
-        wx.Frame.SetIcon(self, titleIcon)
 
-        self.targerField = targerField
-        self.tableName = tableName
-        self.newDataList = []
-        self.checkButthon = None
+class SystemList():
 
-        panel = wx.Panel(self, -1)
-        totalGridsizer = wx.GridBagSizer(2, 2)
-        subGridsizer_left = wx.GridBagSizer(2, 1)
-        subGridsizer_right = wx.GridBagSizer(1, 1)
-
-        pageNameBox = wx.StaticBox(panel, label='Input Filtering Words')
-        pageNameBox_sizer = wx.StaticBoxSizer(pageNameBox, orient=wx.VERTICAL)
-        hbox = wx.BoxSizer(wx.HORIZONTAL)
-        self.listbox = wx.ListBox(panel, -1, size=(350, 300), style=wx.LB_EXTENDED | wx.LB_SORT)
-        hbox.Add(self.listbox, 1, wx.EXPAND | wx.ALL, 20)
-        btnPanel = wx.Panel(panel, -1)
-        vbox = wx.BoxSizer(wx.VERTICAL)
-        new = wx.Button(btnPanel, ID_NEW, 'Add direct', size=(120, 30), style=wx.BU_LEFT)
-        fileAdd = wx.Button(btnPanel, ID_ADDFILE, 'Add from File', size=(120, 30), style=wx.BU_LEFT)
-        dlt = wx.Button(btnPanel, ID_DELETE, 'Delete', size=(120, 30), style=wx.BU_LEFT)
-        clr = wx.Button(btnPanel, ID_CLEAR, 'Delete All', size=(120, 30), style=wx.BU_LEFT)
-        self.Bind(wx.EVT_BUTTON, self.NewItem, id=ID_NEW)
-        self.Bind(wx.EVT_BUTTON, self.addFile, id=ID_ADDFILE)
-        self.Bind(wx.EVT_BUTTON, self.OnDelete, id=ID_DELETE)
-        self.Bind(wx.EVT_BUTTON, self.OnClear, id=ID_CLEAR)
-        self.Bind(wx.EVT_CLOSE, self.OnClose)
-
-        vbox.Add((-1, 20))
-        vbox.Add(new)
-        vbox.Add(fileAdd, 0, wx.TOP, 5)
-        vbox.Add(dlt, 0, wx.TOP, 5)
-        vbox.Add(clr, 0, wx.TOP, 5)
-        btnPanel.SetSizer(vbox)
-        hbox.Add(btnPanel, 0.6, wx.EXPAND | wx.RIGHT, 20)
-        pageNameBox_sizer.Add(hbox, flag=wx.EXPAND | wx.VERTICAL | wx.HORIZONTAL)
-
-        dataDayLimitBox = wx.StaticBox(panel, label='Filtering Pattern')
-        dataDayLimitBox_sizer = wx.StaticBoxSizer(dataDayLimitBox, orient=wx.VERTICAL)
-
-        rangeDateDayLimitBox_Gridsizer = wx.GridBagSizer(5, 3)
-
-        self.rb1 = wx.RadioButton(panel, label='Exclude', pos=(0, 0), style=wx.RB_GROUP)
-        self.rb2 = wx.RadioButton(panel, label='Include', pos=(1, 0))
-
-        rangeDateDayLimitBox_Gridsizer.Add(self.rb1, pos=(0, 0), span=(1, 10),
-                                           flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
-        rangeDateDayLimitBox_Gridsizer.Add(self.rb2, pos=(1, 0), span=(1, 10),
-                                           flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
-        dataDayLimitBox_sizer.Add(rangeDateDayLimitBox_Gridsizer,
-                                  flag=wx.EXPAND | wx.HORIZONTAL | wx.TOP | wx.LEFT | wx.RIGHT, border=1)
-
-        targetBox = wx.StaticBox(panel, label='Target field')
-        targetBox_sizer = wx.StaticBoxSizer(targetBox, orient=wx.VERTICAL)
-        self.tartgetCombo = wx.ComboBox(panel, value=targerField[0], choices=targerField, size=(240, -1),
-                                        style=wx.CB_READONLY)
-        targetBox_sizer.Add(self.tartgetCombo)
-
-        confirmBox = wx.GridBagSizer(1, 10)
-        ok_button = wx.Button(panel, label="Apply")
-        confirmBox.Add(ok_button, pos=(0, 1), flag=wx.TOP | wx.RIGHT, border=1)
-        ok_button.Bind(wx.EVT_BUTTON, self.set_ok)
-
-        cancel_button2 = wx.Button(panel, label="Cancel")
-        confirmBox.Add(cancel_button2, pos=(0, 2), flag=wx.TOP | wx.RIGHT, border=1)
-        cancel_button2.Bind(wx.EVT_BUTTON, self.set_cancel)
-        subGridsizer_left.Add(pageNameBox_sizer, pos=(0, 0), span=(1, 4), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
-                              border=10)
-        subGridsizer_right.Add(dataDayLimitBox_sizer, pos=(0, 0), span=(1, 4),
-                               flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
-        subGridsizer_right.Add(targetBox_sizer, pos=(1, 0), span=(1, 4), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
-                               border=10)
-        totalGridsizer.Add(subGridsizer_left, pos=(0, 0))
-        totalGridsizer.Add(subGridsizer_right, pos=(0, 1), span=(1, 4), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
-                           border=10)
-        totalGridsizer.Add(confirmBox, pos=(2, 1), span=(1, 4), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
-        panel.SetSizer(totalGridsizer)
-        self.Centre()
-        self.Show(True)
-
-    def NewItem(self, event):
-        text = wx.GetTextFromUser('Please input a word', 'Insert dialog')
-        if text == '' or text == ' ' or text == '\t':
-            return 0
-
-        else:
-            self.listbox.Append(text)
-        #             OPT.multiPayProcess_timeSetting.append(text)
+    def __init__(self):
+        json_fp = open(SYSTEM_INFO_FILE_PATH)
+        self.system_info = json.load(json_fp)['system_info']
+        self.system_list = []
+        self.system_to_sys_name = {}
+        for sys_obj in self.system_info:
+            sys_name = sys_obj['name_esde']
+            sys_full_name = sys_obj['name']
+            self.system_list.append(sys_full_name)
+            self.system_to_sys_name[sys_full_name] = sys_name
 
 
-
-    def set_ok(self, event):
-
-        filteringNameSet = set(self.listbox.GetItems())
-
-        if self.rb1.GetValue():
-            self.filteringPattern = "exclude"
-        else:
-            self.filteringPattern = "include"
-
-        field = self.tartgetCombo.GetValue()
-
-        selectIndex = self.targerField.index(field)
-        self.newDataList = []
-
-        dlg = wx.ProgressDialog("Load Data",
-                                "Data Filtering...",
-                                maximum=100,
-                                parent=self,
-                                style=wx.PD_APP_MODAL
-
-                                      | wx.PD_ELAPSED_TIME
-                                      | wx.PD_AUTO_HIDE
-                                # | wx.PD_ESTIMATED_TIME
-                                #                                 | wx.PD_REMAINING_TIME
-                                )
-
-        lineNum = -1
-        selectIndexSet = set([])
-        while True:
-            dataList = NMDB.cursor.fetchmany(2000)
-            if not dataList:
-                break
-            else:
-                for line in dataList:
-                    lineNum += 1
-                    #                     print(lineNum*100/count)
-                    target = line[selectIndex]
-                    if target == None:
-                        continue
-                    for filteringName in filteringNameSet:
-                        if filteringName in target:
-                            selectIndexSet.add(lineNum)
-                            self.newDataList.append(line)
-                            #                             print(target, filteringName)
-                            break
-
-
-        dlg.Update(100, 'END')
-        dlg.Destroy()
-
-        self.Close()
-        self.checkButthon = "apply"
-
-    def set_cancel(self, event):
-        self.checkButthon = "cancel"
-        self.Close()
-
-    def OnClose(self, event):
-        self.checkButthon = "cancel"
-        self.Destroy()
+    def get_list(self, version='alpha'):
+        if version == 'alpha':
+            self.system_list = [i for i in self.system_list if i in ['Sega - Mega Drive - Genesis', 'Sega - Mega-CD - Sega CD']]
+            new_dict ={}
+            for k in self.system_to_sys_name:
+                if k in self.system_list:
+                    new_dict[k] = self.system_to_sys_name[k]
+            self.system_to_sys_name = new_dict
+        return self.system_list, self.system_to_sys_name
 
 
 class ComboBox(wx.ComboBox):
@@ -243,51 +109,72 @@ class ComboBox(wx.ComboBox):
 
 class GetButtonToolbar(wx.Panel):
 
-    def __init__(self, parent):
+    def __init__(self, parent, sys_list):
         # ----------------------------------------------------------------------
         """Constructor"""
         wx.Panel.__init__(self, parent)
         btn_size = (55, 55)
 
         top_sizer = wx.BoxSizer(wx.VERTICAL)
-        tb_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        # tb_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         #         imageIco.cloudIco.GetBitmap()
-        bitmap = imageIco.getApi.GetBitmap()
-        W, H = bitmap.Size
-        image = wx.Bitmap.ConvertToImage(bitmap)
-        reSizeBitmap = (W - 460, H - 460)
-        image = image.Scale(reSizeBitmap[0], reSizeBitmap[1], wx.IMAGE_QUALITY_HIGH)
-        bitmap = wx.Bitmap(image)
-        self.getData_btn = wx.Button(self, label="Add System", size=(110, 55))
+        # bitmap = imageIco.getApi.GetBitmap()
+        # W, H = bitmap.Size
+        # image = wx.Bitmap.ConvertToImage(bitmap)
+        # reSizeBitmap = (W - 460, H - 460)
+        # image = image.Scale(reSizeBitmap[0], reSizeBitmap[1], wx.IMAGE_QUALITY_HIGH)
+
+        # bitmap = wx.Bitmap(image)
+
+
+        targerField = sys_list
+        targetBox = wx.StaticBox(self, label='Select System')
+        targetBox_sizer = wx.StaticBoxSizer(targetBox, orient=wx.VERTICAL)
+        self.tartgetCombo = wx.ComboBox(self, value="-- Select System --", choices=targerField, size=(240, -1),
+                                        style=wx.CB_DROPDOWN)
+        self.path_button = wx.Button(self, label="Select Path..")
+        # targetBox_sizer.Add(self.tartgetCombo)
+        path_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        path_sizer.Add(self.tartgetCombo)
+        path_sizer.Add(self.path_button)
+        bottom_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        self.getData_btn = wx.Button(self, label="Add System", size=(-1, -1))
+        self.path_str = wx.StaticText(self, label="-- Not Selected Roms Path -- ")
+        self.path_str.SetForegroundColour((255,0,0))
+        bottom_sizer.Add(self.path_str)
+        bottom_sizer.Add(self.getData_btn)
 
         # self.getData_btn = wx.BitmapButton(self, size=btn_size, bitmap=bitmap)
-        tb_sizer.Add(self.getData_btn, 0, wx.ALL, 5)
+        targetBox_sizer.Add(path_sizer, 0, wx.ALL, 5)
+        targetBox_sizer.Add(bottom_sizer, 0, wx.ALL, 5)
 
-        bitmap = imageIco.load.GetBitmap()
-        W, H = bitmap.Size
-        image = wx.Bitmap.ConvertToImage(bitmap)
-        reSizeBitmap = (W - 460, H - 460)
-        image = image.Scale(reSizeBitmap[0], reSizeBitmap[1], wx.IMAGE_QUALITY_HIGH)
-        bitmap = wx.Bitmap(image)
-        self.fileLoad_btn = wx.BitmapButton(self, size=btn_size, bitmap=bitmap)
-        tb_sizer.Add(self.fileLoad_btn, 0, wx.ALL, 5)
+        # bitmap = imageIco.load.GetBitmap()
+        # W, H = bitmap.Size
+        # image = wx.Bitmap.ConvertToImage(bitmap)
+        # reSizeBitmap = (W - 460, H - 460)
+        # image = image.Scale(reSizeBitmap[0], reSizeBitmap[1], wx.IMAGE_QUALITY_HIGH)
+        # bitmap = wx.Bitmap(image)
+        # self.fileLoad_btn = wx.BitmapButton(self, size=btn_size, bitmap=bitmap)
+        # tb_sizer.Add(self.fileLoad_btn, 0, wx.ALL, 5)
 
-        bitmap = imageIco.save.GetBitmap()
-        W, H = bitmap.Size
-        image = wx.Bitmap.ConvertToImage(bitmap)
-        reSizeBitmap = (W - 460, H - 460)
-        image = image.Scale(reSizeBitmap[0], reSizeBitmap[1], wx.IMAGE_QUALITY_HIGH)
-        bitmap = wx.Bitmap(image)
-        self.fileSave_btn = wx.BitmapButton(self, size=btn_size, bitmap=bitmap)
-        tb_sizer.Add(self.fileSave_btn, 0, wx.ALL, 5)
-        # top_sizer.Add(tb_sizer)
+        # bitmap = imageIco.save.GetBitmap()
+        # W, H = bitmap.Size
+        # image = wx.Bitmap.ConvertToImage(bitmap)
+        # reSizeBitmap = (W - 460, H - 460)
+        # image = image.Scale(reSizeBitmap[0], reSizeBitmap[1], wx.IMAGE_QUALITY_HIGH)
+        # bitmap = wx.Bitmap(image)
+        # self.fileSave_btn = wx.BitmapButton(self, size=btn_size, bitmap=bitmap)
+        # tb_sizer.Add(self.fileSave_btn, 0, wx.ALL, 5)
+        # # top_sizer.Add(tb_sizer)
 
         h_sizer = wx.BoxSizer(wx.HORIZONTAL)
         h_sizer.Add(wx.StaticLine(self), 1, wx.EXPAND)
         # top_sizer.Add(h_sizer, 1, wx.EXPAND)
 
-        self.SetSizer(tb_sizer)
+        self.SetSizer(targetBox_sizer)
 
 
 
@@ -298,12 +185,12 @@ class MainPanel2(wx.Panel):
         wx.Panel.__init__(self, parent)
         mainSizer = wx.BoxSizer(wx.VERTICAL)
         splitter = wx.SplitterWindow(self)
-        self.leftPanel = wx.Panel(splitter)
-        twitterDataBox = wx.StaticBox(self.leftPanel)
-        twitterDataBox_sizer = wx.StaticBoxSizer(twitterDataBox, orient=wx.VERTICAL)
+        # self.leftPanel = wx.Panel(splitter)
+        # twitterDataBox = wx.StaticBox(self.leftPanel)
+        # twitterDataBox_sizer = wx.StaticBoxSizer(twitterDataBox, orient=wx.VERTICAL)
 
         self.selectedItemList = []
-        self.leftPanel = GridPanelGames(splitter, None, 'aaa', 10, None)
+        self.leftPanel = GridPanelGames(splitter, None, 'aaa', 10)
 
         self.rightPanel = wx.Panel(splitter)
         resultBox = wx.StaticBox(self.rightPanel)
@@ -325,43 +212,45 @@ class MainPanel2(wx.Panel):
 
         self.nullPanel1 = NullDataPanel(self)
         self.nullPanel2 = NullDataPanel(self)
-        self.pdfPanel = PDFViewPanel(self)
-        self.pdfPanel.viewer.LoadFile(r"D:\Emul\Full_Roms_cache\135\155680_manuals_us.pdf")
-        self.pdfPanel.viewer.SetZoom(-1)
         self.nullPanel3 = NullDataPanel(self)
         self.nullPanel4 = NullDataPanel(self)
 
         self.notebook.AddPage(self.nullPanel1, "INFO", True)
         self.notebook.AddPage(self.nullPanel2, "SCREEN")
         self.notebook.AddPage(self.nullPanel3, "BOX-ART")
-        self.notebook.AddPage(self.nullPanel4, "VIDEO")
-        self.notebook.AddPage(self.pdfPanel, "Manual")
+
+        # self.pdfPanel = PDFViewPanel(self)
+        # self.pdfPanel.viewer.LoadFile(r"E:\Emul\Full_Roms_cache\135\155680_manuals_us.pdf")
+        # self.pdfPanel.viewer.SetZoom(-1)
+
+        # self.notebook.AddPage(self.nullPanel4, "VIDEO")
+        # self.notebook.AddPage(self.pdfPanel, "Manual")
 
         self.notebook.SetSelection(0)    
     def itemDoubleClick(self, event):
 
-        index = event.GetIndex()
-        self.notebook.DeletePage(1)
-        #         (queryOperator, presentTime, gt.tweets, gt.users, gt.hashTags, dateString) = self.DataList[index]
+        self.leftPanel.enable_display()
+        self.leftPanel.load_data()
 
-        noteBookStyle = aui.AUI_NB_BOTTOM
-        self.notebook2 = aui.AuiNotebook(self.rightPanel, agwStyle=noteBookStyle)
-        global DATA_LIST
-        #         print(DATA_LIST[index])
-        (tableName, queryStr, newsNum, isNLP) = DATA_LIST[index]
+        # index = event.GetIndex()
+        # self.notebook.DeletePage(1)
+        # #         (queryOperator, presentTime, gt.tweets, gt.users, gt.hashTags, dateString) = self.DataList[index]
 
-        self.gridPanelNews = GridPanelNews(self, tableName, queryStr, newsNum, self.list_ctrl)
-        self.notebook2.AddPage(self.gridPanelNews, "News", True)
+        # noteBookStyle = aui.AUI_NB_BOTTOM
+        # self.notebook2 = aui.AuiNotebook(self.rightPanel, agwStyle=noteBookStyle)
 
-        if isNLP == 0:
-            pass
-        else:
-            self.gridPanelWord = GridPanelWord(self, tableName)
-            self.notebook2.AddPage(self.gridPanelWord, "Words", True)
+        # self.gridPanelNews = GridPanelNews(self, tableName, queryStr, newsNum, self.list_ctrl)
+        # self.notebook2.AddPage(self.gridPanelNews, "News", True)
 
-        self.notebook.AddPage(self.notebook2, "Data", True)
-        self.notebook.SetSelection(1)
-        self.notebook2.SetSelection(0)
+        # if isNLP == 0:
+        #     pass
+        # else:
+        #     self.gridPanelWord = GridPanelWord(self, tableName)
+        #     self.notebook2.AddPage(self.gridPanelWord, "Words", True)
+
+        # self.notebook.AddPage(self.notebook2, "Data", True)
+        # self.notebook.SetSelection(1)
+        # self.notebook2.SetSelection(0)
 
     def itemSelection(self, event):
         selectIndex = event.GetIndex()
@@ -422,6 +311,9 @@ class MainPanel(wx.Panel):
 
     def __init__(self, parent):
         wx.Panel.__init__(self, parent)
+        sys_data = SystemList()
+        self.sys_list, self.sys_dict = sys_data.get_list()
+        self.user_meta = UserMeta()
         mainSizer = wx.BoxSizer(wx.VERTICAL)
         splitter = wx.SplitterWindow(self)
         self.leftPanel = wx.Panel(splitter)
@@ -435,29 +327,36 @@ class MainPanel(wx.Panel):
                                      )
         self.list_ctrl.InsertColumn(0, 'NAME', width=140, format=wx.LIST_FORMAT_CENTER)
         self.list_ctrl.InsertColumn(1, 'SYSTEM', width=80, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(2, 'PLATFORM', width=100, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(2, 'PATH', width=100, format=wx.LIST_FORMAT_CENTER)
         self.list_ctrl.InsertColumn(4, '# GAME', width=80, format=wx.LIST_FORMAT_CENTER)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.itemDoubleClick)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.itemSelection)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.itemDeSelection)
+        self.openUserMeta()
 
-        toolbar = GetButtonToolbar(self.leftPanel)
-        toolbar.getData_btn.Bind(wx.EVT_BUTTON, self.openDataCollectorBox)
-        toolbar.fileLoad_btn.Bind(wx.EVT_BUTTON, self.openFileLoadBox)
-        toolbar.fileSave_btn.Bind(wx.EVT_BUTTON, self.openFileSaveBox)
+
+
+        self.toolbar = GetButtonToolbar(self.leftPanel, self.sys_list)
+        self.toolbar.getData_btn.Bind(wx.EVT_BUTTON, self.addSystem)
+        self.toolbar.path_button.Bind(wx.EVT_BUTTON, self.openSelectFolder)
+        # toolbar.fileLoad_btn.Bind(wx.EVT_BUTTON, self.openFileLoadBox)
+        # toolbar.fileSave_btn.Bind(wx.EVT_BUTTON, self.openFileSaveBox)
 
         #         toolbar.getData_btn.Bind(wx.EVT_BUTTON, self.openDataCollectorBox)
         #         toolbar.info_btn.Bind(wx.EVT_BUTTON, self.openAccessTokenBox)
 
-        twitterDataBox_sizer.Add(toolbar, 0, wx.EXPAND)
+        twitterDataBox_sizer.Add(self.toolbar, 0, wx.EXPAND)
+        romset_box = wx.StaticBox(self.leftPanel, label='Users Romset')
+        romset_box_sizer = wx.StaticBoxSizer(romset_box, orient=wx.VERTICAL)
+        romset_box_sizer.Add(self.list_ctrl, 1, wx.EXPAND)
 
-        twitterDataBox_sizer.Add(self.list_ctrl, 1, wx.EXPAND)
+        twitterDataBox_sizer.Add(romset_box_sizer, 1, wx.EXPAND)
         #         self.leftPanel.Bind(wx.EVT_LIST_ITEM_SELECTED, self.OnSelectMustHave, self.list_ctrl)
 
         btnSizer2 = wx.BoxSizer(wx.HORIZONTAL)
 
-        btn0 = wx.Button(self.leftPanel, label="Add game", size=(110, 35))
-        btn0.Bind(wx.EVT_BUTTON, self.renameItem)
+        # btn0 = wx.Button(self.leftPanel, label="Add game", size=(110, 35))
+        # btn0.Bind(wx.EVT_BUTTON, self.renameItem)
         btn1 = wx.Button(self.leftPanel, label="Re-Scan", size=(110, 35))
         btn1.Bind(wx.EVT_BUTTON, self.mergeItem)
         btn2 = wx.Button(self.leftPanel, label="Delete", size=(110, 35))
@@ -465,7 +364,7 @@ class MainPanel(wx.Panel):
         btn4 = wx.Button(self.leftPanel, label="Make Game List", size=(160, 35))
         btn4.Bind(wx.EVT_BUTTON, self.insertItemToNetMiner)
         btnSizer2.Add(btn1)
-        btnSizer2.Add(btn0)
+        # btnSizer2.Add(btn0)
         btnSizer2.Add(btn2)
         btnSizer2.Add((10, 10), 1, wx.EXPAND)
         btnSizer2.Add(btn4)
@@ -501,12 +400,75 @@ class MainPanel(wx.Panel):
         # self.notebook.AddPage(self.nullPanel, "Data", True)
         # self.notebook.SetSelection(0)
 
-    def openDataCollectorBox(self, event):
+    def openUserMeta(self):
+        
+        self.data = self.user_meta.getUserMeta()
 
-        self.notebook.SetSelection(0)
+        # for line in r:
+        #     self.data.append((line[1], line[2], line[4],line[5], line[0]))
+
+        # self.itemDataMap = {}
+        for i, item in enumerate(self.data):
+            index = self.list_ctrl.InsertItem(i, str(item[1]))
+            self.list_ctrl.SetItem(index, 1, item[2])
+            self.list_ctrl.SetItem(index, 2, str(item[4]))
+            self.list_ctrl.SetItem(index, 3, str(item[5]))
+            self.list_ctrl.SetItemData(index, i)
+            # self.itemDataMap[i] = item
+
+            
+
+    def addSystem(self, event):
+        select_system = self.toolbar.tartgetCombo.GetValue()
+        select_rom_path = self.toolbar.path_str.GetLabel()
+        print(select_system, select_rom_path)
+        rom_path = select_rom_path
+        system_name = self.sys_dict[select_system]
+        mr = MatchingRoms(rom_path, system_name)
+        r = mr.run(other_path=False)
+        # for k in mr.game_info:
+        #     print(k)
+        data_list = []
+        for i in r:
+            # print(type(i[1][2]))
+            # print(len((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]]))
+            data_list.append((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]])
+
+        um = UserMeta()
+        # "file, name, name_kor, desc, desc_kor, genre, releasedate, developer, players, titlescreens, screenshots, wheel, cover, box2dside, boxtexture, box3d, videos, manuals, support)"
+        # data_list = ['file','name', '네임']
+        name = 'test_alpha'
+        platform = 'window'
+        num_games = len(data_list)
+        um.addSystem(name, system_name, platform, num_games, rom_path, data_list)
+        self.data = self.user_meta.getUserMeta()
+
+        index = self.list_ctrl.InsertItem(self.list_ctrl.GetItemCount(), str(name))
+        self.list_ctrl.SetItem(index, 1, system_name)
+        self.list_ctrl.SetItem(index, 2, rom_path)
+        self.list_ctrl.SetItem(index, 3, str(num_games))
+        self.list_ctrl.SetItemData(index, i)
+
+
+
+
+
+
+    def openSelectFolder(self, event):
+        # 폴더 선택 대화상자 생성
+        dlg = wx.DirDialog(self, "Choose a directory:",
+                           style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST)
+
+        if dlg.ShowModal() == wx.ID_OK:
+            # 선택된 폴더 경로 출력
+            self.toolbar.path_str.SetLabel(dlg.GetPath())
+            self.toolbar.path_str.SetForegroundColour((0,0,255))
+            print("You chose %s" % dlg.GetPath())
+        dlg.Destroy()        
+
 
     def openFileSaveBox(self, event):
-        with wx.FileDialog(self, "Save NME News Data file", wildcard="NME News Data files (*.nmen)|*.nmen",
+        with wx.FileDialog(self, "Save HEBANG Data file", wildcard="HEBANG files (*.hbf)|*.hbf",
                            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fileDialog:
 
             if fileDialog.ShowModal() == wx.ID_CANCEL:
@@ -541,7 +503,7 @@ class MainPanel(wx.Panel):
     def openFileLoadBox(self, event):
         global NMDB
         global DATA_LIST
-        with wx.FileDialog(self, "Open NME News Data file", wildcard="NME News Data files (*.nmen)|*.nmen",
+        with wx.FileDialog(self, "Open HEBANG Data file", wildcard="HEBANG files (*.hbf)|*.hbf",
                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as fileDialog:
 
             if fileDialog.ShowModal() == wx.ID_CANCEL:
@@ -552,27 +514,32 @@ class MainPanel(wx.Panel):
     def itemDoubleClick(self, event):
 
         index = event.GetIndex()
-        self.notebook.DeletePage(1)
-        #         (queryOperator, presentTime, gt.tweets, gt.users, gt.hashTags, dateString) = self.DataList[index]
+        r = self.data[index]
+        tb_name = r[0]
+        self.rightPanel.leftPanel.load_data(tb_name)
 
-        noteBookStyle = aui.AUI_NB_BOTTOM
-        self.notebook2 = aui.AuiNotebook(self.rightPanel, agwStyle=noteBookStyle)
-        global DATA_LIST
-        #         print(DATA_LIST[index])
-        (tableName, queryStr, newsNum, isNLP) = DATA_LIST[index]
+        # index = event.GetIndex()
+        # self.notebook.DeletePage(1)
+        # #         (queryOperator, presentTime, gt.tweets, gt.users, gt.hashTags, dateString) = self.DataList[index]
 
-        self.gridPanelNews = GridPanelNews(self, tableName, queryStr, newsNum, self.list_ctrl)
-        self.notebook2.AddPage(self.gridPanelNews, "News", True)
+        # noteBookStyle = aui.AUI_NB_BOTTOM
+        # self.notebook2 = aui.AuiNotebook(self.rightPanel, agwStyle=noteBookStyle)
+        # global DATA_LIST
+        # #         print(DATA_LIST[index])
+        # (tableName, queryStr, newsNum, isNLP) = DATA_LIST[index]
 
-        if isNLP == 0:
-            pass
-        else:
-            self.gridPanelWord = GridPanelWord(self, tableName)
-            self.notebook2.AddPage(self.gridPanelWord, "Words", True)
+        # self.gridPanelNews = GridPanelNews(self, tableName, queryStr, newsNum, self.list_ctrl)
+        # self.notebook2.AddPage(self.gridPanelNews, "News", True)
 
-        self.notebook.AddPage(self.notebook2, "Data", True)
-        self.notebook.SetSelection(1)
-        self.notebook2.SetSelection(0)
+        # if isNLP == 0:
+        #     pass
+        # else:
+        #     self.gridPanelWord = GridPanelWord(self, tableName)
+        #     self.notebook2.AddPage(self.gridPanelWord, "Words", True)
+
+        # self.notebook.AddPage(self.notebook2, "Data", True)
+        # self.notebook.SetSelection(1)
+        # self.notebook2.SetSelection(0)
 
     def itemSelection(self, event):
         selectIndex = event.GetIndex()
@@ -677,6 +644,74 @@ class MainPanel(wx.Panel):
         wx.MessageBox('Process is completed', 'Info', wx.OK | wx.ICON_INFORMATION)
 
 
+class AddSystemDialog(wx.Dialog):
+
+    def __init__(self, sys_list, sys_dict):
+        super(AddSystemDialog, self).__init__(None, title="Add System")
+        self.sys_list = sys_list
+        self.sys_dict = sys_dict
+        self.InitUI()
+
+    def InitUI(self):
+        titleIcon = imageIco.syncIco.GetIcon()
+        wx.Frame.SetIcon(self, titleIcon)
+
+        panel = wx.Panel(self, -1)
+        totalGridsizer = wx.GridBagSizer(2, 2)
+        subGridsizer_left = wx.GridBagSizer(2, 1)
+        subGridsizer_right = wx.GridBagSizer(1, 1)
+
+        dataDayLimitBox = wx.StaticBox(panel, label='Select Roms Path')
+        dataDayLimitBox_sizer = wx.StaticBoxSizer(dataDayLimitBox, orient=wx.VERTICAL)
+
+        rangeDateDayLimitBox_Gridsizer = wx.GridBagSizer(5, 3)
+
+        self.rb1 = wx.Button(panel, label='Select Roms folder', pos=(0, 0))
+        # self.rb2 = wx.RadioButton(panel, label='Include', pos=(1, 0))
+        self.rb1.Bind()
+        rangeDateDayLimitBox_Gridsizer.Add(self.rb1, pos=(0, 0), span=(1, 10),
+                                           flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
+        # rangeDateDayLimitBox_Gridsizer.Add(self.rb2, pos=(1, 0), span=(1, 10),
+        #                                    flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
+        dataDayLimitBox_sizer.Add(rangeDateDayLimitBox_Gridsizer,
+                                  flag=wx.EXPAND | wx.HORIZONTAL | wx.TOP | wx.LEFT | wx.RIGHT, border=1)
+
+        targerField = self.sys_list
+        targetBox = wx.StaticBox(panel, label='Select System')
+        targetBox_sizer = wx.StaticBoxSizer(targetBox, orient=wx.VERTICAL)
+        self.tartgetCombo = wx.ComboBox(panel, value=targerField[0], choices=targerField, size=(240, -1),
+                                        style=wx.CB_READONLY)
+        targetBox_sizer.Add(self.tartgetCombo)
+
+        confirmBox = wx.GridBagSizer(1, 10)
+        ok_button = wx.Button(panel, label="Apply")
+        confirmBox.Add(ok_button, pos=(0, 1), flag=wx.TOP | wx.RIGHT, border=1)
+        ok_button.Bind(wx.EVT_BUTTON, self.set_ok)
+
+        cancel_button2 = wx.Button(panel, label="Cancel")
+        confirmBox.Add(cancel_button2, pos=(0, 2), flag=wx.TOP | wx.RIGHT, border=1)
+        cancel_button2.Bind(wx.EVT_BUTTON, self.OnClose)
+        subGridsizer_right.Add(dataDayLimitBox_sizer, pos=(0, 0), span=(1, 4),
+                               flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
+        subGridsizer_right.Add(targetBox_sizer, pos=(1, 0), span=(1, 4), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
+                               border=10)
+        totalGridsizer.Add(subGridsizer_left, pos=(0, 0))
+        totalGridsizer.Add(subGridsizer_right, pos=(0, 1), span=(1, 4), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
+                           border=10)
+        totalGridsizer.Add(confirmBox, pos=(2, 1), span=(1, 4), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
+        panel.SetSizer(totalGridsizer)
+        self.Centre()
+        self.Show(True)
+
+    def set_ok(self, e):
+        print('On Ok')
+
+
+
+    def OnClose(self, e):
+        self.Destroy()
+
+
 class RenameDialog(wx.Dialog):
 
     def __init__(self, selectionList):
@@ -735,41 +770,35 @@ class NullDataPanel(wx.Panel):
         wx.StaticText(self, -1, "Please Click Data Item", (40, 40))
 
 
+class SortableListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin, listmix.ColumnSorterMixin):
+    def __init__(self, parent, id, pos, size, style):
+        wx.ListCtrl.__init__(self, parent, id, pos, size, style)
+        listmix.ListCtrlAutoWidthMixin.__init__(self)
+        listmix.ColumnSorterMixin.__init__(self, numColumns=3)
+        self.itemDataMap = {}
+    
+    def GetListCtrl(self):
+        return self
+
 class GridPanelGames(wx.Panel):
-    def __init__(self, parent, tableName, titleQuery, newsNum, list_ctrl):
+    def __init__(self, parent, tableName, titleQuery, newsNum):
         wx.Panel.__init__(self, parent)
+        self.user_meta = UserMeta()
         self.myGrid = gridlib.Grid(self)
         #         attr = gridlib.GridCellAttr()
         #         attr.SetReadOnly(True)
-        self.list_ctrl = list_ctrl
         self.beforSortTup = None
         self.reData = None
-        self.applyQuery = ""
 
-        optionBox = wx.StaticBox(self, label='Query Option')
-        optionBox_sizer = wx.StaticBoxSizer(optionBox, orient=wx.VERTICAL)
-        optionBox_Gridsizer = wx.GridBagSizer(1, 2)
-        self.queryStr = wx.TextCtrl(self, value="", size=(450, -1))
-        optionBox_Gridsizer.Add(wx.StaticText(self, label="Query : "), pos=(0, 0))
-        optionBox_Gridsizer.Add(self.queryStr, pos=(0, 1))
-        self.apply_button = wx.Button(self, label="Apply", size=(60, 23))
-        optionBox_Gridsizer.Add(self.apply_button, pos=(0, 3), flag=wx.TOP | wx.RIGHT, border=1)
+        optionBox = wx.StaticBox(self, label='Game List Option')
+        optionBox_sizer = wx.StaticBoxSizer(optionBox, orient=wx.HORIZONTAL)
+        self.add_button = wx.Button(self, label="Add Games", size=(120, 43))
+        optionBox_sizer.Add(self.add_button, flag=wx.TOP | wx.RIGHT, border=1)
         # self.apply_button.Bind(wx.EVT_BUTTON, self.queryButtonClick)
 
-        self.filtrting_button = wx.Button(self, label="Filtering", size=(90, 23))
-        optionBox_Gridsizer.Add(self.filtrting_button, pos=(0, 4), flag=wx.TOP | wx.RIGHT, border=1)
+        self.delete_button = wx.Button(self, label="Delete Games", size=(120, 43))
+        optionBox_sizer.Add(self.delete_button, flag=wx.TOP | wx.RIGHT, border=1)
         # self.filtrting_button.Bind(wx.EVT_BUTTON, self.filtrting_button_click)
-        self.dbox = None
-
-        self.queryResultStr = wx.StaticText(self, label="", style=wx.TE_RICH)
-        optionBox_Gridsizer.Add(self.queryResultStr, pos=(1, 0))
-
-        self.save_button = wx.Button(self, label="Save", size=(60, 23))
-        #         self.save_button.Disable()
-        optionBox_Gridsizer.Add(self.save_button, pos=(1, 3), flag=wx.TOP | wx.RIGHT, border=1)
-        # self.save_button.Bind(wx.EVT_BUTTON, self.querySaveClick)
-
-        optionBox_sizer.Add(optionBox_Gridsizer, flag=wx.EXPAND | wx.HORIZONTAL | wx.TOP | wx.LEFT | wx.RIGHT, border=2)
 
         global OPTION_LINENUM
         if newsNum > OPTION_LINENUM:
@@ -778,48 +807,110 @@ class GridPanelGames(wx.Panel):
         self.titleQuery = titleQuery
         self.photo = None
         self.tableName = tableName
-        self.myGrid.CreateGrid(newsNum, 3)
-        self.myGrid.SetColLabelValue(0, "FILE")
-        self.myGrid.SetColLabelValue(1, "NAME (EN)")
-        self.myGrid.SetColLabelValue(2, "NAME (KR)")
-        self.myGrid.SetColSize(1, 500)
-        d_size = 300
-        self.myGrid.SetColSize(0, d_size)
-        self.myGrid.SetColSize(1, d_size)
-        self.myGrid.SetColSize(2, d_size)
 
-        self.myGrid.SetCellValue(0, 0, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        self.myGrid.SetCellValue(1, 0, str(1212121212121231231232))
+        self.list_ctrl = SortableListCtrl(self, wx.ID_ANY, pos=wx.DefaultPosition,
+                                          size=wx.DefaultSize,
+                                          style=wx.LC_REPORT | wx.BORDER_SUNKEN)
+        self.list_ctrl.InsertColumn(0, 'FILE', width=280, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(1, 'NAME (EN)', width=280, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(2, 'NAME (KR)', width=280, format=wx.LIST_FORMAT_CENTER)
 
-        self.myGrid.Bind(gridlib.EVT_GRID_LABEL_LEFT_CLICK, self.showPopupMenu)
-        self.myGrid.Bind(gridlib.EVT_GRID_CELL_LEFT_DCLICK, self.cellDoubleClick)
 
-        # global NMDB
-        # dataList = NMDB.getAllRowData(tableName, rowNum=OPTION_LINENUM)
-        # rowNum = 0
-        # for line in dataList[:self.newsNum]:
-        #     self.myGrid.SetCellValue(rowNum, 0, line[0])
-        #     self.myGrid.SetCellValue(rowNum, 1, line[1][:500])
-        #     self.myGrid.SetCellValue(rowNum, 2, str(line[2]))
-        #     self.myGrid.SetCellValue(rowNum, 3, line[3])
-        #     self.myGrid.SetCellValue(rowNum, 4, str(line[4]))
-        #     self.myGrid.SetCellValue(rowNum, 5, str(line[5]))
-        #     self.myGrid.SetCellValue(rowNum, 6, line[6])
-        #     self.myGrid.SetCellValue(rowNum, 7, line[7])
-        #     rowNum += 1
+        self.disable_display()
+        # self.list_ctrl.InsertColumn(4, '# GAME', width=80, format=wx.LIST_FORMAT_CENTER)
+        # self.list_ctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.itemDoubleClick)
+        # self.list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.itemSelection)
+        # self.list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.itemDeSelection)
+        # data = [(1, "John DoeEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE", 30000000000000000000000000000000000000000000000000000000000000000),
+        #         (2, "Jane Smith", 22),
+        #         (3, "Mike Hill", 32)]
 
-        self.myGrid.EnableEditing(False)
-        self.myGrid.GetGridWindow().Bind(wx.EVT_MOTION, self.onMouseOver)
-        #         myGrid.ChangedValue = False
+        # self.itemDataMap = {}
+        # for i, item in enumerate(data):
+        #     index = self.list_ctrl.InsertItem(i, str(item[0]))
+        #     self.list_ctrl.SetItem(index, 1, item[1])
+        #     self.list_ctrl.SetItem(index, 2, str(item[2]))
+        #     self.list_ctrl.SetItemData(index, i)
+        #     self.itemDataMap[i] = item
+
+        # self.list_ctrl.itemDataMap = self.itemDataMap
+        self.list_ctrl.EnableCheckBoxes(True)
+        self.list_ctrl.GetColumnSorter()
+
+
+
+
+        # self.myGrid.CreateGrid(newsNum, 3)
+        # self.myGrid.SetColLabelValue(0, "FILE")
+        # self.myGrid.SetColLabelValue(1, "NAME (EN)")
+        # self.myGrid.SetColLabelValue(2, "NAME (KR)")
+        # self.myGrid.SetColSize(1, 500)
+        # d_size = 300
+        # self.myGrid.SetColSize(0, d_size)
+        # self.myGrid.SetColSize(1, d_size)
+        # self.myGrid.SetColSize(2, d_size)
+
+        # self.myGrid.SetCellValue(0, 0, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        # self.myGrid.SetCellValue(1, 0, str(1212121212121231231232))
+
+        # self.myGrid.Bind(gridlib.EVT_GRID_LABEL_LEFT_CLICK, self.showPopupMenu)
+        # self.myGrid.Bind(gridlib.EVT)
+        # self.myGrid.Bind(gridlib.EVT_GRID_CELL_LEFT_DCLICK, self.cellDoubleClick)
+
+        # # global NMDB
+        # # dataList = NMDB.getAllRowData(tableName, rowNum=OPTION_LINENUM)
+        # # rowNum = 0
+        # # for line in dataList[:self.newsNum]:
+        # #     self.myGrid.SetCellValue(rowNum, 0, line[0])
+        # #     self.myGrid.SetCellValue(rowNum, 1, line[1][:500])
+        # #     self.myGrid.SetCellValue(rowNum, 2, str(line[2]))
+        # #     self.myGrid.SetCellValue(rowNum, 3, line[3])
+        # #     self.myGrid.SetCellValue(rowNum, 4, str(line[4]))
+        # #     self.myGrid.SetCellValue(rowNum, 5, str(line[5]))
+        # #     self.myGrid.SetCellValue(rowNum, 6, line[6])
+        # #     self.myGrid.SetCellValue(rowNum, 7, line[7])
+        # #     rowNum += 1
+
+        # self.myGrid.EnableEditing(False)
+        # self.myGrid.GetGridWindow().Bind(wx.EVT_MOTION, self.onMouseOver)
+        # #         myGrid.ChangedValue = False
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(optionBox_sizer)
-        sizer.Add(self.myGrid, 1, flag=wx.EXPAND | wx.HORIZONTAL | wx.TOP | wx.LEFT | wx.RIGHT, border=2)
+        sizer.Add(self.list_ctrl, 1, flag=wx.EXPAND | wx.HORIZONTAL | wx.TOP | wx.LEFT | wx.RIGHT, border=2)
 
         self.SetSizer(sizer)
         self.Centre()
         self.Show(True)
 
+    def disable_display(self):
+        self.list_ctrl.Disable()
+        self.add_button.Disable()
+        self.delete_button.Disable()
+
+    def enable_display(self):
+        self.list_ctrl.Enable()
+        self.add_button.Enable()
+        self.delete_button.Enable()
+
+    def load_data(self, tb_name):
+        self.list_ctrl.DeleteAllItems()
+        self.enable_display()
+        r = self.user_meta.getSystemData(tb_name)
+        data = []
+        for line in r:
+            data.append((line[0], line[1], line[2]))
+
+        self.itemDataMap = {}
+        for i, item in enumerate(data):
+            index = self.list_ctrl.InsertItem(i, str(item[0]))
+            self.list_ctrl.SetItem(index, 1, item[1])
+            self.list_ctrl.SetItem(index, 2, str(item[2]))
+            self.list_ctrl.SetItemData(index, i)
+            self.itemDataMap[i] = item
+
+        self.list_ctrl.itemDataMap = self.itemDataMap
+        self.list_ctrl.GetColumnSorter()
 
     def cellDoubleClick(self, event):
         index = event.GetRow()
@@ -866,7 +957,7 @@ class GridPanelGames(wx.Panel):
         else:
             sortOrder = "ASC"
         global NMDB
-        selectedColDict = {-1: "title", 0: "title", 1: "content", 2: "writer", 3: "date", 4: "category", 5: "section",
+        selectedColDict = {0: "title", 1: "content", 2: "writer", 3: "date", 4: "category", 5: "section",
                            6: "url", 7: "source"}
         try:
             selectCol = selectedColDict[selectedColNum]
@@ -908,86 +999,6 @@ class GridPanelGames(wx.Panel):
         self.setCell(tmpDataList)
 
 
-
-
-
-class DataCollectionPanel(wx.Panel):
-    """Constructor"""
-
-    #     def __init__(self, parent):
-    #         wx.Panel.__init__(self, parent)
-    def __init__(self, parent, list_ctrl):
-        wx.Panel.__init__(self, parent)
-        self.infoDict = {}
-        self.frame = parent
-        self.list_ctrl = list_ctrl
-        self.searhcKeyUrl = {}
-        #         wx.Frame.__init__(self, parent, id, title, size=(670, 400))
-
-        totalGridsizer = wx.GridBagSizer(1, 1)
-
-        sourceBox = wx.StaticBox(self, label='News Source')
-        sourceBox_sizer = wx.StaticBoxSizer(sourceBox, orient=wx.VERTICAL)
-        sourceBox_Gridsizer = wx.GridBagSizer(3, 6)
-        self.source_KHAN = wx.CheckBox(self, label="경향신문")
-        self.source_DONGA = wx.CheckBox(self, label="동아일보")
-        self.source_CHOSUN = wx.CheckBox(self, label="조선일보")
-        self.source_JOONGANG = wx.CheckBox(self, label="중앙일보")
-        self.source_HANI = wx.CheckBox(self, label="한겨레")
-        self.source_HANKOOK = wx.CheckBox(self, label="한국일보")
-        self.source_KBS = wx.CheckBox(self, label="KBS")
-        self.source_MBC = wx.CheckBox(self, label="MBC")
-        self.source_SBS = wx.CheckBox(self, label="SBS")
-        # justinkim 수정 중
-        self.source_KHAN.SetValue(0)
-        self.source_DONGA.SetValue(1)
-        self.source_CHOSUN.SetValue(0)
-        self.source_JOONGANG.SetValue(0)
-        self.source_HANI.SetValue(0)
-        self.source_HANKOOK.SetValue(0)
-        self.source_KBS.SetValue(0)
-        self.source_MBC.SetValue(0)
-        self.source_SBS.SetValue(0)
-
-        sourceBox_Gridsizer.Add(self.source_KHAN, pos=(0, 0), span=(0, 1), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
-                                border=8)
-        sourceBox_Gridsizer.Add(self.source_DONGA, pos=(0, 1), span=(0, 1),
-                                flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=8)
-        sourceBox_Gridsizer.Add(self.source_CHOSUN, pos=(0, 2), span=(0, 1),
-                                flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=8)
-        sourceBox_Gridsizer.Add(self.source_JOONGANG, pos=(0, 3), span=(0, 1),
-                                flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=8)
-        sourceBox_Gridsizer.Add(self.source_HANI, pos=(0, 4), span=(0, 1), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
-                                border=8)
-        sourceBox_Gridsizer.Add(self.source_HANKOOK, pos=(1, 0), span=(0, 1),
-                                flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=8)
-        sourceBox_Gridsizer.Add(self.source_KBS, pos=(1, 1), span=(0, 1), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
-                                border=8)
-        sourceBox_Gridsizer.Add(self.source_MBC, pos=(1, 2), span=(0, 1), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
-                                border=8)
-        sourceBox_Gridsizer.Add(self.source_SBS, pos=(1, 3), span=(0, 1), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
-                                border=8)
-        sourceBox_sizer.Add(sourceBox_Gridsizer, flag=wx.EXPAND | wx.HORIZONTAL | wx.TOP | wx.LEFT | wx.RIGHT, border=8)
-
-        confirmBox = wx.GridBagSizer(1, 1)
-        totalGridsizer.Add(sourceBox_sizer, pos=(0, 0), span=(1, 2), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT,
-                           border=20)
-        totalGridsizer.Add(confirmBox, pos=(3, 0), span=(1, 2), flag=wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT, border=10)
-        self.SetSizer(totalGridsizer)
-        self.Centre()
-        self.Show(True)
-
-
-    def openHelp(self, event):
-        print('open help')
-
-    def set_ok(self, event):
-        #
-        print('ok')
-
-    def set_buttonProcessing(self, event):
-
-        print('set')
 
 class SaveBox(wx.Dialog):
 
@@ -1048,14 +1059,14 @@ class MainFrame(wx.Frame):
     def __init__(self):
         size = (WIDTH, HEIGHT)
         wx.Frame.__init__(self, parent=None, id=wx.ID_ANY,
-                          title='News Data Collector', size=size)
+                          title='HE-BANG SETTING TOOLS', size=size)
         self.browser = None
 
         # Must ignore X11 errors like 'BadWindow' and others by
         # installing X11 error handlers. This must be done after
         # wx was intialized.
 
-        self.setup_icon()
+        # self.setup_icon()
         self.create_menu()
         self.Bind(wx.EVT_CLOSE, self.OnClose)
 
@@ -1082,23 +1093,28 @@ class MainFrame(wx.Frame):
 
     def create_menu(self):
         filemenu = wx.Menu()
-        filemenu.Append(100, "&Open Recent File")
-        filemenu.Append(2, '&Preference')
+        open_item = wx.MenuItem(filemenu, 100, "&Open")
+        save_item = wx.MenuItem(filemenu, 2, '&Save')
+        filemenu.Append(open_item)
+        filemenu.Append(save_item)
         filemenu.Append(3, "&Exit")
         menubar = wx.MenuBar()
         menubar.Append(filemenu, "&File")
+
+        open_item.Enable(False)
+        save_item.Enable(False)
 
         helpMenu = wx.Menu()
         #         helpMenu.Append(100, '&Options')
         helpMenu.Append(200, '&About')
         #         manualMenu = wx.Menu()
 
-        helpMenu.Append(300, '&Open Manual')
+        # helpMenu.Append(300, '&Open Manual')
 
         self.Bind(wx.EVT_MENU, self.OpenOption, id=2)
         self.Bind(wx.EVT_MENU, self.OnClose, id=3)
         self.Bind(wx.EVT_MENU, self.OnAboutBox, id=200)
-        self.Bind(wx.EVT_MENU, self.OpenManual, id=300)
+        # self.Bind(wx.EVT_MENU, self.OpenManual, id=300)
         menubar.Append(helpMenu, '&Help')
         self.SetMenuBar(menubar)
 
@@ -1115,12 +1131,7 @@ class MainFrame(wx.Frame):
     def OnAboutBox(self, e):
 
         description = """
-        Users can get help on how to use this extension in Help > Open Manual. If you encounter any problems, please contact us netminer@cyram.com and www.netminer.com with the followings.
-        
-        1. Product ID(CYNMXXXX)
-        2. NetMiner and Extension version
-        3. Problem symptom with situation where it occurs.
-        4. (If necessary) NetMiner file(.nmf)
+        HBS Tools Alpha version (0.0.1)
         """
 
         licence = """InHouse"""
@@ -1128,10 +1139,10 @@ class MainFrame(wx.Frame):
         info = wx.adv.AboutDialogInfo()
 
         #         info.SetIcon(wx.Icon('hunter.png', wx.BITMAP_TYPE_PNG))
-        info.SetName('[Extension] News Data Collector')
-        info.SetVersion('1.0.1')
+        info.SetName('HBS Tools')
+        info.SetVersion('0.0.1 [Alpha ver.]')
         info.SetDescription(description)
-        info.SetCopyright('(C) Cyram Inc. 2022-2023. All rights reserved.')
+        info.SetCopyright('삼부굿. All rights reserved.')
         # info.SetWebSite('http://www.cyram.com')
         #         info.SetLicence(licence)
 
@@ -1143,9 +1154,6 @@ class MainFrame(wx.Frame):
         global NMDB
         print("[wxpython.py] OnClose called")
         self.Destroy()
-        if NMDB != None:
-            NMDB.connection.close()
-            NMDB = None
         return
 
 

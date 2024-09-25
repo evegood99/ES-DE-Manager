@@ -10,12 +10,14 @@ import itertools
 import operator
 from collections import Counter
 import uuid
+import json
 
-DB_FILE_PATH = "./es-manage-app/src/games_meta.db"
-USER_DB_PATH = "./es-manage-app/src/user_meta.db"
-USER_TABLE_SCHEMA = "(id text, name text, system text, platform text, num_game int)"
+SYSTEM_INFO_FILE_PATH = "info.json"
+DB_FILE_PATH = "games_meta.db"
+USER_DB_PATH = "user_meta.db"
+USER_TABLE_SCHEMA = "(id text, name text, system text, platform text, path text, num_game int)"
 GAMES_TABLE_SCHEMA = "(file text, title_s text, title_s_kor text, title text, title_kor text, desc text, desc_kor text, genre text, releasedate text, developer text, players text, titlescreens text, screenshots text, wheel text, cover text, box2dside text, boxtexture text, box3d text, videos text, manuals text, support text)"
-
+ROMS_CACHE_PATH = r'E:\Emul\Full_Roms_cache'
 
 
 def most_frequent_element(lst):
@@ -274,13 +276,21 @@ class UserMeta:
         for line in r:
             result.append(line)
         return result
-    
-    def addSystem(self, name, sys_name, platform, num_game, data_list):
-        tb_id = 'tb_'+str(uuid.uuid4().hex)
-        sql_insert = f"INSERT INTO {self.user_meta_table} (id, name ,system, platform, num_game) VALUES({tb_id}, {name}, {sys_name}, {platform}, {num_game})"
-        print(sql_insert)
+
+    def getSystemData(self, tb_name):
         cur = self.con.cursor()
-        cur.execute(sql_insert)
+        r = cur.execute(f"SELECT * FROM {tb_name}")
+        data = []
+        for line in r:
+            data.append(line)
+        return data
+
+
+    def addSystem(self, name, sys_name, platform, num_game, path, data_list):
+        tb_id = 'tb_'+str(uuid.uuid4().hex)
+        sql_insert = f"INSERT INTO {self.user_meta_table}(id, name ,system, platform, path, num_game) VALUES(?, ?, ?, ?, ?, ?)"
+        cur = self.con.cursor()
+        cur.execute(sql_insert,(tb_id, name, sys_name, platform, path, num_game))
         try:
             cur.execute(f"CREATE TABLE {tb_id}{GAMES_TABLE_SCHEMA};")
         except:
@@ -315,9 +325,20 @@ class MatchingRoms:
         if system_name == 'mame':
             system_name = 'fbneo'
         self.system_name = system_name
+        json_fp = open(SYSTEM_INFO_FILE_PATH)
+        self.system_info = json.load(json_fp)['system_info']
+        for sys_obj in self.system_info:
+            sys_name = sys_obj['name_esde']
+            if system_name == sys_name:
+                self.sys_id = sys_obj['scrapper_system_id']
+                self.ra_system_name = sys_obj['name']
+
+
         self.fuzz_data = {}
         self.fuzz_data2 = {}
         self.game_info = {}
+        self.game_media = {}
+        self.read_media_cache()
         self.read_fuzz_data()
 
 
@@ -327,13 +348,43 @@ class MatchingRoms:
         
         r = cur.execute(f"SELECT * from {tb_name}")
         for line in r:
-            self.game_info[int(line[0])] = line[1:]
+            if int(line[0]) in self.game_media:
+                next_line = self.game_media[int(line[0])]
+            else:
+                next_line = (None, None, None, None, None, None, None, None, None, None)
+            self.game_info[int(line[0])] = line[1:9]+next_line
             game_name = line[1]
             self.fuzz_data2[game_name] = line[0]
             game_name = game_name.replace(' : ',' ')
             game_name = game_name.replace(' ','')
             self.fuzz_data[game_name] = line[0]
         
+
+    def read_media_cache(self):
+        for line in os.listdir(ROMS_CACHE_PATH+'\\'+str(self.sys_id)):
+            # file_ext = line[-4:]
+            file_name = line[:-4]
+            data_str_list = file_name.split('_')
+            game_id = int(data_str_list[0])
+            media_type = data_str_list[1]
+            if len(data_str_list) == 3:
+                region = data_str_list[2]
+            else:
+                region = None
+            if not game_id in self.game_media:
+                self.game_media[game_id] = {}
+            self.game_media[game_id].setdefault(media_type, []).append(line)
+        for game_id in self.game_media:
+            media_dict = self.game_media[game_id]
+            tmp_line = []
+            for md in ['titlescreens', 'screenshots', 'wheel', 'cover', 'box2dside', 'boxtexture', 'box3d', 'videos', 'manuals', 'support']:
+                if md in media_dict:
+                    tmp_line.append(';;'.join(media_dict[md]))
+                else:
+                    tmp_line.append(None)
+            self.game_media[game_id] = tuple(tmp_line)
+
+
     def get_roms_info(self, rom_id):
         cur = self.con.cursor()
         tb_name = 'roms_'+self.system_name
@@ -809,10 +860,14 @@ class MatchingRoms:
             selected_file = data[0]
             o_file_name = data[1]
             folder = data[2]
+            if folder == None:
+                game_path = selected_file
+            else:
+                game_path = folder+'/'+selected_file
             selected_game_roms_info = self.check_file_hash(o_file_name)
             if len(selected_game_roms_info) != 0:
                 # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'1')
+                yield (game_path, self.getFinalRoms(o_file_name, selected_game_roms_info),'1')
                 # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                 continue
 
@@ -852,7 +907,7 @@ class MatchingRoms:
                                         break
                                 if len(selected_game_roms_info) != 0:
                                     # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                                    yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'2')
+                                    yield (game_path, self.getFinalRoms(o_file_name, selected_game_roms_info),'2')
                                     # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                                     continue
                                 else:
@@ -860,7 +915,7 @@ class MatchingRoms:
                                     if len(selected_game_roms_info) == 0:
                                         # print(o_file_name, 'NOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOON')
                                         no_search = True
-                                        yield (data[0], (None, None, None))
+                                        yield (game_path, (None, None, None))
                                         # result_list.append((o_file_name, (None, None, None)))
                                         continue
                                         
@@ -870,7 +925,7 @@ class MatchingRoms:
                 selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
                 selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
                 # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'3')
+                yield (game_path, self.getFinalRoms(o_file_name, selected_game_roms_info),'3')
                 # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                 continue
 
@@ -900,7 +955,7 @@ class MatchingRoms:
                     if len(selected_game_roms_info) == 1: #위에 제외 후 1개만 남았다면 그녁석을 선택 (끝)
                         selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
                         # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                        yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'4')
+                        yield (game_path, self.getFinalRoms(o_file_name, selected_game_roms_info),'4')
                         # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                         continue
 
@@ -908,7 +963,7 @@ class MatchingRoms:
                         selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
                         selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
                         # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                        yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'5')
+                        yield (game_path, self.getFinalRoms(o_file_name, selected_game_roms_info),'5')
                         # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                         continue
 
@@ -916,7 +971,7 @@ class MatchingRoms:
                     selected_game_roms_info = self.closeMatching(base_title, sub_title_list, selected_game_roms_info)
                     selected_game_roms_info = self.checkRegion(base_title, bucket_str_list, selected_game_roms_info)
                     # game_name_list, rom_name_list = self.getGameRoms(selected_game_roms_info, is_result_roms)
-                    yield (data[0], self.getFinalRoms(o_file_name, selected_game_roms_info),'6')
+                    yield (game_path, self.getFinalRoms(o_file_name, selected_game_roms_info),'6')
                     # result_list.append((o_file_name, self.getFinalRoms(o_file_name, selected_game_roms_info)))
                     continue
 
@@ -1005,7 +1060,7 @@ def test_nlp():
         print(o_file_name, t_list, bucket_str_list)
 
 def test():
-    rom_path = r'D:\ROMs\megacd'
+    rom_path = r'G:\ROMs\megacd'
     # rom_path = r'G:\Roms\psx\70s Robot Anime Geppy-X'
     # rom_path = r'E:\Emul\Full_Roms_assets\ps2\textual'
     system_name = 'megacd'
@@ -1020,7 +1075,7 @@ def test():
     data_list = []
     for i in r:
         # print(type(i[1][2]))
-        print((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]])
+        print(len((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]]))
         data_list.append((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]])
 
     um = UserMeta()
@@ -1029,7 +1084,9 @@ def test():
     name = 'test'
     platform = 'window'
     num_games = len(data_list)
-    um.addSystem(name, system_name, platform, num_games, data_list)
+    um.addSystem(name, system_name, platform, num_games, rom_path, data_list)
+
+
 
 if __name__ == "__main__":
     test()
