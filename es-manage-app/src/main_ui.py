@@ -130,26 +130,28 @@ class GetButtonToolbar(wx.Panel):
 
         targerField = sys_list
         targetBox = wx.StaticBox(self, label='Select System')
-        targetBox_sizer = wx.StaticBoxSizer(targetBox, orient=wx.VERTICAL)
-        self.tartgetCombo = wx.ComboBox(self, value="-- Select System --", choices=targerField, size=(240, -1),
+        targetBox_sizer = wx.StaticBoxSizer(targetBox, orient=wx.HORIZONTAL)
+        self.tartgetCombo = wx.ComboBox(self, value="-- Select System --", choices=targerField, size=(320, -1),
                                         style=wx.CB_DROPDOWN)
-        self.path_button = wx.Button(self, label="Select Path..")
+        self.path_button = wx.Button(self, label="Rom Path..")
         # targetBox_sizer.Add(self.tartgetCombo)
+        left_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        left_sizer.Add(self.tartgetCombo, wx.EXPAND)
+        # path_sizer.Add(self.path_button)
         path_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        path_sizer.Add(self.tartgetCombo)
-        path_sizer.Add(self.path_button)
-        bottom_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        self.getData_btn = wx.Button(self, label="Add System", size=(-1, -1))
-        self.path_str = wx.StaticText(self, label="-- Not Selected Roms Path -- ")
+        self.getData_btn = wx.Button(self, label="Add", size=(70, 60))
+        self.path_str = wx.StaticText(self, label=" --- Not Selected Roms Path --- ")
         self.path_str.SetForegroundColour((255,0,0))
-        bottom_sizer.Add(self.path_str)
-        bottom_sizer.Add(self.getData_btn)
+        path_sizer.Add(self.path_str)
+        path_sizer.Add(self.path_button)
+        left_sizer.Add(path_sizer, 0, wx.ALL, 4)
+        # bottom_sizer.Add(self.getData_btn)
 
         # self.getData_btn = wx.BitmapButton(self, size=btn_size, bitmap=bitmap)
-        targetBox_sizer.Add(path_sizer, 0, wx.ALL, 5)
-        targetBox_sizer.Add(bottom_sizer, 0, wx.ALL, 5)
+        targetBox_sizer.Add(left_sizer, 0, wx.ALL, 5)
+        targetBox_sizer.Add(self.getData_btn, 0, wx.ALL, 5)
 
         # bitmap = imageIco.load.GetBitmap()
         # W, H = bitmap.Size
@@ -327,7 +329,7 @@ class MainPanel(wx.Panel):
                                      )
         self.list_ctrl.InsertColumn(0, 'NAME', width=140, format=wx.LIST_FORMAT_CENTER)
         self.list_ctrl.InsertColumn(1, 'SYSTEM', width=80, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(2, 'PATH', width=100, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(2, 'PATH', width=120, format=wx.LIST_FORMAT_CENTER)
         self.list_ctrl.InsertColumn(4, '# GAME', width=80, format=wx.LIST_FORMAT_CENTER)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.itemDoubleClick)
         self.list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, self.itemSelection)
@@ -385,7 +387,7 @@ class MainPanel(wx.Panel):
         # #######################
 
         splitter.SplitVertically(self.leftPanel, self.rightPanel)
-        splitter.SetMinimumPaneSize(420)
+        splitter.SetMinimumPaneSize(450)
         mainSizer.Add(splitter, 1, wx.EXPAND)
 
         self.SetSizer(mainSizer)
@@ -430,9 +432,12 @@ class MainPanel(wx.Panel):
         #     print(k)
         data_list = []
         for i in r:
+            if i[1][2] == None:
+                data_list.append((i[0],)+(str(None),)*20)
+            else:
             # print(type(i[1][2]))
-            # print(len((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]]))
-            data_list.append((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]])
+                # print((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]])
+                data_list.append((i[0], i[1][0], i[1][1])+ mr.game_info[i[1][2]])
 
         um = UserMeta()
         # "file, name, name_kor, desc, desc_kor, genre, releasedate, developer, players, titlescreens, screenshots, wheel, cover, box2dside, boxtexture, box3d, videos, manuals, support)"
@@ -447,7 +452,7 @@ class MainPanel(wx.Panel):
         self.list_ctrl.SetItem(index, 1, system_name)
         self.list_ctrl.SetItem(index, 2, rom_path)
         self.list_ctrl.SetItem(index, 3, str(num_games))
-        self.list_ctrl.SetItemData(index, i)
+        self.list_ctrl.SetItemData(index, self.list_ctrl.GetItemCount())
 
 
 
@@ -570,20 +575,11 @@ class MainPanel(wx.Panel):
             tmpList.sort(reverse=True)
             removeTableList = []
             for index in tmpList:
-                tt = DATA_LIST.pop(index)
+                self.data.pop(index)
                 self.list_ctrl.DeleteItem(index)
-                tableName = tt[0]
-                isNLP = tt[3]
-                removeTableList.append(tableName)
-                if isNLP:
-                    removeTableList.append(tableName + "_words")
-                    removeTableList.append(tableName + "_wordsContents")
-                    removeTableList.append(tableName + "_wordsTfidf")
-
-            self.selectedItemList = []
-
-
-    #         NMDB.connection.execute("VACUUM")
+            print(tmpList)
+            self.user_meta.deleteSystem(tmpList)
+            
 
     def mergeItem(self, event):
         global DATA_LIST
@@ -798,7 +794,7 @@ class GridPanelGames(wx.Panel):
 
         self.delete_button = wx.Button(self, label="Delete Games", size=(120, 43))
         optionBox_sizer.Add(self.delete_button, flag=wx.TOP | wx.RIGHT, border=1)
-        # self.filtrting_button.Bind(wx.EVT_BUTTON, self.filtrting_button_click)
+        # self.delete_button.Bind(wx.EVT_BUTTON, self.delete_button_click)
 
         global OPTION_LINENUM
         if newsNum > OPTION_LINENUM:
@@ -812,8 +808,8 @@ class GridPanelGames(wx.Panel):
                                           size=wx.DefaultSize,
                                           style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.list_ctrl.InsertColumn(0, 'FILE', width=280, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(1, 'NAME (EN)', width=280, format=wx.LIST_FORMAT_CENTER)
-        self.list_ctrl.InsertColumn(2, 'NAME (KR)', width=280, format=wx.LIST_FORMAT_CENTER)
+        self.list_ctrl.InsertColumn(1, 'NAME (EN)', width=280, format=wx.LIST_FORMAT_LEFT)
+        self.list_ctrl.InsertColumn(2, 'NAME (KR)', width=280, format=wx.LIST_FORMAT_LEFT)
 
 
         self.disable_display()
@@ -840,41 +836,6 @@ class GridPanelGames(wx.Panel):
 
 
 
-        # self.myGrid.CreateGrid(newsNum, 3)
-        # self.myGrid.SetColLabelValue(0, "FILE")
-        # self.myGrid.SetColLabelValue(1, "NAME (EN)")
-        # self.myGrid.SetColLabelValue(2, "NAME (KR)")
-        # self.myGrid.SetColSize(1, 500)
-        # d_size = 300
-        # self.myGrid.SetColSize(0, d_size)
-        # self.myGrid.SetColSize(1, d_size)
-        # self.myGrid.SetColSize(2, d_size)
-
-        # self.myGrid.SetCellValue(0, 0, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        # self.myGrid.SetCellValue(1, 0, str(1212121212121231231232))
-
-        # self.myGrid.Bind(gridlib.EVT_GRID_LABEL_LEFT_CLICK, self.showPopupMenu)
-        # self.myGrid.Bind(gridlib.EVT)
-        # self.myGrid.Bind(gridlib.EVT_GRID_CELL_LEFT_DCLICK, self.cellDoubleClick)
-
-        # # global NMDB
-        # # dataList = NMDB.getAllRowData(tableName, rowNum=OPTION_LINENUM)
-        # # rowNum = 0
-        # # for line in dataList[:self.newsNum]:
-        # #     self.myGrid.SetCellValue(rowNum, 0, line[0])
-        # #     self.myGrid.SetCellValue(rowNum, 1, line[1][:500])
-        # #     self.myGrid.SetCellValue(rowNum, 2, str(line[2]))
-        # #     self.myGrid.SetCellValue(rowNum, 3, line[3])
-        # #     self.myGrid.SetCellValue(rowNum, 4, str(line[4]))
-        # #     self.myGrid.SetCellValue(rowNum, 5, str(line[5]))
-        # #     self.myGrid.SetCellValue(rowNum, 6, line[6])
-        # #     self.myGrid.SetCellValue(rowNum, 7, line[7])
-        # #     rowNum += 1
-
-        # self.myGrid.EnableEditing(False)
-        # self.myGrid.GetGridWindow().Bind(wx.EVT_MOTION, self.onMouseOver)
-        # #         myGrid.ChangedValue = False
-
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(optionBox_sizer)
         sizer.Add(self.list_ctrl, 1, flag=wx.EXPAND | wx.HORIZONTAL | wx.TOP | wx.LEFT | wx.RIGHT, border=2)
@@ -899,14 +860,17 @@ class GridPanelGames(wx.Panel):
         r = self.user_meta.getSystemData(tb_name)
         data = []
         for line in r:
-            data.append((line[0], line[1], line[2]))
+            data.append((line[0], line[1], str(line[2])))
 
         self.itemDataMap = {}
         for i, item in enumerate(data):
             index = self.list_ctrl.InsertItem(i, str(item[0]))
             self.list_ctrl.SetItem(index, 1, item[1])
             self.list_ctrl.SetItem(index, 2, str(item[2]))
+            if item[1] == str(None):
+                self.list_ctrl.SetItemTextColour(index, wx.Colour(255,0,0))
             self.list_ctrl.SetItemData(index, i)
+
             self.itemDataMap[i] = item
 
         self.list_ctrl.itemDataMap = self.itemDataMap
@@ -928,75 +892,6 @@ class GridPanelGames(wx.Panel):
             event.GetEventObject().SetToolTip(msg)
         except:
             pass
-
-    def showPopupMenu(self, event):
-        menu = wx.Menu()
-        # Show how to put an icon in the menu
-        self.sortCol = event.GetCol()
-        item1 = wx.MenuItem(menu, -1, "Sorting(Ascending)")
-        menu.Append(item1)
-        menu.Bind(wx.EVT_MENU, self.onPopupItemSelectedAscending, item1)
-        item2 = wx.MenuItem(menu, -1, "Sorting(Descending)")
-        menu.Append(item2)
-        menu.Bind(wx.EVT_MENU, self.onPopupItemSelectedDescending, item2)
-
-        #         menu.Append(self.popupID2, "Two")
-        #         menu.Append(self.popupID3, "Three")
-
-        # Popup the menu.  If an item is selected then its handler
-        # will be called before PopupMenu returns.
-        self.PopupMenu(menu)
-        menu.Destroy()
-
-    def onPopupSorting(self, isReverseOrder):
-        global OPTION_LINENUM
-        self.myGrid.EnableEditing(True)
-        selectedColNum = self.sortCol
-        if isReverseOrder:
-            sortOrder = "DESC"
-        else:
-            sortOrder = "ASC"
-        global NMDB
-        selectedColDict = {0: "title", 1: "content", 2: "writer", 3: "date", 4: "category", 5: "section",
-                           6: "url", 7: "source"}
-        try:
-            selectCol = selectedColDict[selectedColNum]
-        except:
-            selectCol = "title"
-        tmpDataList = NMDB.getAllRowDataOrdered(self.tableName, selectCol, sortOrder, beforeSortTup=self.beforSortTup)
-        self.beforSortTup = (selectCol, sortOrder)
-
-        return tmpDataList
-
-    def setCell(self, tmpDataList):
-        rowNum = 0
-        global OPTION_LINENUM
-        if self.newsNum < OPTION_LINENUM:
-            viewLine = self.newsNum
-        else:
-            viewLine = OPTION_LINENUM
-        for line in tmpDataList[:viewLine]:
-            self.myGrid.SetCellValue(rowNum, 0, line[0])
-            self.myGrid.SetCellValue(rowNum, 1, line[1][:500])
-            self.myGrid.SetCellValue(rowNum, 2, str(line[2]))
-            self.myGrid.SetCellValue(rowNum, 3, line[3])
-            self.myGrid.SetCellValue(rowNum, 4, str(line[4]))
-            self.myGrid.SetCellValue(rowNum, 5, str(line[5]))
-            self.myGrid.SetCellValue(rowNum, 6, line[6])
-            self.myGrid.SetCellValue(rowNum, 7, line[7])
-            rowNum += 1
-
-        self.myGrid.EnableEditing(False)
-
-    def onPopupItemSelectedAscending(self, event):
-        tmpDataList = self.onPopupSorting(False)
-        self.setCell(tmpDataList)
-
-    #         print selectedColNum
-
-    def onPopupItemSelectedDescending(self, event):
-        tmpDataList = self.onPopupSorting(True)
-        self.setCell(tmpDataList)
 
 
 

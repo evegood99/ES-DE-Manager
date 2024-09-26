@@ -305,6 +305,7 @@ class UserMeta:
         del_index_list.sort(reverse=True)
         rm_id_set= set([])
         for index in del_index_list:
+            index += 1            
             r = cur.execute(f"SELECT id FROM {self.user_meta_table} WHERE ROWID IN (SELECT ROWID FROM {self.user_meta_table} ORDER BY ROWID LIMIT 1 OFFSET {str(index-1)});")
             rm_id = r.fetchone()[0]
             rm_id_set.add(rm_id)
@@ -723,7 +724,7 @@ class MatchingRoms:
             r = r1
             fuzz_data = self.fuzz_data
 
-        cr_val = 60
+        cr_val = 80
         if system_name in ['dos']:
             cr_val = 90
         if r[1] >= cr_val:
