@@ -299,6 +299,16 @@ class UserMeta:
         cur.executemany(f'INSERT INTO {tb_id} VALUES{game_v};', data_list)
         self.con.commit()
 
+    def rescanSystem(self, index):
+        cur = self.con.cursor()
+        rm_id_set = set([])
+        index += 1            
+        r = cur.execute(f"SELECT id FROM {self.user_meta_table} WHERE ROWID IN (SELECT ROWID FROM {self.user_meta_table} ORDER BY ROWID LIMIT 1 OFFSET {str(index-1)});")
+        rm_id = r.fetchone()[0]
+        rm_id_set.add(rm_id)
+
+        for rm_id in rm_id_set:
+            cur.execute(f"DELETE FROM {rm_id}")
 
     def deleteSystem(self, del_index_list):
         cur = self.con.cursor()
@@ -319,8 +329,9 @@ class UserMeta:
 
 class MatchingRoms:
 
-    def __init__(self, roms_path, system_name) -> None:
+    def __init__(self, roms_path, system_name, dlg=None) -> None:
         # self.translator = Translator()
+        self.dlg = dlg
         self.con = sqlite3.connect(DB_FILE_PATH)
         self.roms_path = roms_path
         if system_name == 'mame':
@@ -856,9 +867,14 @@ class MatchingRoms:
                 iterator = self.read_local_files()
 
 
-
+        num_all = len(iterator)
+        n = 0
         for data in iterator:
+            n += 1
             selected_file = data[0]
+            if self.dlg != None:
+                self.dlg.Update(int(n*100 / num_all),selected_file)
+
             o_file_name = data[1]
             folder = data[2]
             if folder == None:

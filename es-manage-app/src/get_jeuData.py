@@ -16,14 +16,14 @@ from collections import Counter
 import time
 from shutil import copyfile
 
-SYSTEM_INFO_FILE_PATH = "./es-manage-app/src/info.json"
-DB_FILE_PATH = "./es-manage-app/src/games_meta.db"
+SYSTEM_INFO_FILE_PATH = "info.json"
+DB_FILE_PATH = "games_meta.db"
 ROMS_XML_BASE_PATH = r'E:\Emul\Full_Roms_assets'
 ROMS_TABLE_SCHEMA = "(id text, src_name text, filename text, filename_kor text, rom_size integer, rom_crc text, rom_md5 text, rom_sha1 text, game_id integer, game_name text, alt integer, beta integer, demo integer, langs text, langs_short text, regions text, regions_short text)"
 GAMES_TABLE_SCHEMA = "(id text, name text, name_kor text, desc text, desc_kor text, genre text, releasedate text, developer text, players text)"
 GAMES_TABLE_ADD_SCHEMA = (('titlescreens', 'text'), ('screenshots', 'text'), ('wheel', 'text'), ('cover', 'text'), ('box2dside', 'text'), ('boxtextur', 'text'), ('box3d', 'text'), ('videos', 'text'), ('manuals', 'text'), ('support', 'text'))
 RETROARCH_META_PATH = r"E:\Emul\Full_Roms_meta"
-TENTACLE_ROM_META_PATH = "./es-manage-app/src/tentacle_meta"
+TENTACLE_ROM_META_PATH = "tentacle_meta"
 ROMS_CACHE_PATH = r'E:\Emul\Full_Roms_cache'
 
 
@@ -900,12 +900,19 @@ class SSRomsMeta:
         if os.path.exists(xml_file_path):
             tree = ET.parse(xml_file_path)
             root = tree.getroot()
-            result = {}
+            tmp_data = {}
             for child in root.findall('game'):
                 path = child.find('path').text
                 path = '%'+path[2:-4]+'.%'
                 title = child.find('name').text
+                tmp_data[removeBucket(path[:-2]).strip()+'%'] = title
                 cur.execute(f'UPDATE {tb_name} SET filename_kor = ? WHERE filename LIKE ? AND filename_kor is null',(title, path))
+            self.con.commit()
+
+            for path in tmp_data:
+                title = tmp_data[path]
+                # print(path)
+                cur.execute(f'UPDATE {tb_name} SET filename_kor = ? WHERE (filename LIKE ?) or (src_name LIKE ?) AND filename_kor is null',(title, path, path))
             self.con.commit()
 
         r = cur.execute(f"SELECT * FROM {tb_name}")
@@ -1549,7 +1556,7 @@ def test2():
 
 def test():
     # s_list = ["3do", "3ds", "amiga", "atarijaguar", "atarist", "dos", "dreamcast", "famicom", "gameandwatch", "gamegear", "gb","gbc","gba","gc","mastersystem", "megacd", "megadrive", "msx", "n64", "nds", "pc98", "pcengine", "pcenginecd", "pcfx", "ps2", "psp", "psx", "saturn", "sega32x", "sfc", "wii", "wonderswancolor", "x68000"]
-    system_name = 'gb'
+    system_name = 'nds'
     # for system_name in s_list:
     ss= SSRomsMeta(system_name)
     # ss.makeDBTable("Battle Chess Enhanced")
